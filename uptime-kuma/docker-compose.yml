@@ -1,0 +1,29 @@
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    # Inyectamos el ADN del Homelab
+    env_file:
+      - ../global.env
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      # Usamos la variable definida en global.env
+      - ${APPDATA_PATH}/uptime-kuma:/app/data
+      # Socket de Docker en modo solo lectura por seguridad
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "3001:3001"
+    # Protección de almacenamiento contra logs infinitos
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
+
+networks:
+  default:
+    name: bearslions_network # Red común opcional para comunicación entre stacks
