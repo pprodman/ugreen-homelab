@@ -7,10 +7,11 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - SPEEDTEST_SCHEDULE=${SPEEDTEST_SCHEDULE}
+      - SPEEDTEST_SCHEDULE=0 * * * *
       - APP_KEY=${APP_KEY}
       - APP_URL=${APP_URL}
-      - DB_CONNECTION=${DB_CONNECTION}
+      - DB_CONNECTION=$sqlite
+      - DB_DATABASE=/config/speedtest-tracker.db
     volumes:
       - ${APPDATA_PATH}/speedtest-tracker/config:/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
