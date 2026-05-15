@@ -3,9 +3,6 @@ services:
     image: lscr.io/linuxserver/code-server:latest
     container_name: code-server
     restart: unless-stopped
-    env_file:
-      - ../global.env
-      - .env
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
