@@ -12,7 +12,7 @@ services:
       - APP_URL=${APP_URL}
       - DB_CONNECTION=${DB_CONNECTION}
     volumes:
-      - ${APPDATA_PATH}/speedtest-tracker:/config
+      - ${APPDATA_PATH}/speedtest-tracker/config:/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "8080:80"
