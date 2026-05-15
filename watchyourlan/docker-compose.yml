@@ -1,0 +1,29 @@
+services:
+  watchyourlan:
+    image: aceberg/watchyourlan:latest
+    container_name: watchyourlan
+    network_mode: host
+    restart: unless-stopped
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - IFACES=eth0
+      - ADDR=0.0.0.0
+      - PORT=8841
+      - TIMEOUT=60
+    volumes:
+      - ${APPDATA_PATH}/watchyourlan:/data
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
