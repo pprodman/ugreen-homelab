@@ -11,7 +11,7 @@ services:
       - APP_KEY=${APP_KEY}
       - APP_URL=${APP_URL}
       - DB_CONNECTION=$sqlite
-      - DB_DATABASE=/config/speedtest-tracker.db
+      - DB_DATABASE=database.sqlite
     volumes:
       - ${APPDATA_PATH}/speedtest-tracker/config:/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
