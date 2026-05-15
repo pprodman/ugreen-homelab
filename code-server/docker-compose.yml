@@ -1,0 +1,32 @@
+services:
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    env_file:
+      - ../global.env
+      - .env
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - PASSWORD=${WEB_PASSWORD}
+      - DEFAULT_WORKSPACE=${DOCKER_ROOT}
+    volumes:
+      # Configuración del editor (Extensiones, temas, etc)
+      - ${APPDATA_PATH}/code-server/config:/config
+      # ACCESO MAESTRO: Para editar tus otros Stacks desde aquí
+      - ${DOCKER_ROOT}:${DOCKER_ROOT}
+    ports:
+      - 8443:8443
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
+    networks:
+      - bearslions_network
+
+networks:
+  bearslions_network:
+    external: true
