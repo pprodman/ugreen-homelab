@@ -1,0 +1,28 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    environment:
+      - SIGNUPS_ALLOWED=${SIGNUPS_ALLOWED:-true} 
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/vaultwarden:/data
+    ports:
+      - "8081:80"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
+    networks:
+      - bearslions_network
+
+networks:
+  bearslions_network:
+    external: true

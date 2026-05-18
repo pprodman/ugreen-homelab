@@ -1,0 +1,23 @@
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    hostname: ugreen-nas
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TS_AUTHKEY=${TS_KEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=--advertise-exit-node --advertise-routes=192.168.1.0/24
+    volumes:
+      - ${APPDATA_PATH}/tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
