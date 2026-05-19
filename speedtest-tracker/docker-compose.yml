@@ -3,6 +3,8 @@ services:
     image: lscr.io/linuxserver/speedtest-tracker:latest
     container_name: speedtest_tracker
     restart: unless-stopped
+    ports:
+      - "8080:80"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -11,12 +13,9 @@ services:
       - APP_KEY=${APP_KEY}
       - APP_URL=${APP_URL}
       - DB_CONNECTION=sqlite
-      - DB_DATABASE=config/database.sqlite
-    volumes:
+    volumes: 
       - ${APPDATA_PATH}/speedtest-tracker:/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "8080:80"
     deploy:
       resources:
         limits:
