@@ -1,0 +1,30 @@
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - "3005:3000"
+    volumes:
+      - ${APPDATA_PATH}/homepage/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - HOMEPAGE_ALLOWED_HOSTS=home.${DOMAIN:-bearslions.com},${NAS_IP:-192.168.1.225},${NAS_IP:-192.168.1.225}:3005,localhost,127.0.0.1,homepage
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
+    networks:
+      - bearslions_network
+
+networks:
+  bearslions_network:
+    external: true
