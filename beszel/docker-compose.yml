@@ -39,6 +39,8 @@ services:
       options:
         max-size: "${LOG_MAX_SIZE}"
         max-file: "${LOG_MAX_FILE}"
+    networks:
+     - bearslions_network
 
 networks:
   bearslions_network:
