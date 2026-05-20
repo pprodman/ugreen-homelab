@@ -1,0 +1,114 @@
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    volumes:
+      - ${APPDATA_PATH}/immich/album:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=${TZ}
+      - IMMICH_MACHINE_LEARNING_URL=http://immich-machine-learning:3003
+      # --- CONEXIONES INTERNAS (RESOLUCIÓN DE RED) ---
+      - DB_HOSTNAME=database
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=${DB_PASSWORD} # Se gestiona como secreto en la UI de Dockhand
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=redis
+    ports:
+      - "2283:2283"
+    devices:
+      # Passthrough de iGPU para transcodificación de vídeo rápida
+      - /dev/dri:/dev/dri
+    depends_on:
+      - redis
+      - database
+      - immich-machine-learning
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2048M # Límite protector para no saturar tus 8GB de RAM
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
+    networks:
+      - bearslions_network
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}-openvino
+    volumes:
+      # Almacenamos los modelos de reconocimiento facial e IA en AppData para facilitar backups
+      - ${APPDATA_PATH}/immich/model-cache:/cache
+    environment:
+      - TZ=${TZ}
+      # --- CONFIGURACIÓN DE IA CON OPEN-VINO (IGPU N100) ---
+      - IMMICH_MACHINE_LEARNING_DEVICE=openvino
+      - ONNXRUNTIME_EXECUTION_PROVIDERS=OpenVINOExecutionProvider
+      - OPENVINO_DEVICE=GPU
+      - MACHINE_LEARNING_GPU_LAYERS=all
+      - MACHINE_LEARNING_MODEL_TTL=3600
+      - MACHINE_LEARNING_WORKERS=1
+      - MACHINE_LEARNING_REQUEST_THREADS=1
+    privileged: true
+    devices:
+      - /dev/dri:/dev/dri
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    device_cgroup_rules:
+      - c 189:* rmw
+    shm_size: 512mb # Esencial para evitar cuellos de botella en la iGPU
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
+    networks:
+      - bearslions_network
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:8-bookworm
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - bearslions_network
+
+  database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+    environment:
+      - TZ=${TZ}
+      - POSTGRES_PASSWORD=${DB_PASSWORD} # Se hereda de la variable de Dockhand
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=immich
+      # --- OPTIMIZACIÓN HDD MECÁNICOS ---
+      - DB_STORAGE_TYPE=HDD
+    volumes:
+      - ${APPDATA_PATH}/immich/postgres:/var/lib/postgresql/data
+    shm_size: 512mb
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${LOG_MAX_SIZE}"
+        max-file: "${LOG_MAX_FILE}"
+    networks:
+      - bearslions_network
+
+networks:
+  bearslions_network:
+    external: true
