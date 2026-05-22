@@ -3,6 +3,7 @@ services:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage
     restart: unless-stopped
+    user: "${PUID}:121"
     ports:
       - "3005:3000"
     volumes:
@@ -13,8 +14,6 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - HOMEPAGE_ALLOWED_HOSTS=home.${DOMAIN:-bearslions.com},${NAS_IP:-192.168.1.225},${NAS_IP:-192.168.1.225}:3005,localhost,127.0.0.1,homepage
-    group_add:
-      - "121"
     deploy:
       resources:
         limits:
