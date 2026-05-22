@@ -3,14 +3,19 @@ services:
     image: louislam/uptime-kuma:1
     container_name: uptime-kuma
     restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
     volumes:
-      # Usamos la variable definida en global.env
       - ${APPDATA_PATH}/uptime-kuma:/app/data
-      # Socket de Docker en modo solo lectura por seguridad
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "3001:3001"
-    # Protección de almacenamiento contra logs infinitos
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     logging:
       driver: "json-file"
       options:

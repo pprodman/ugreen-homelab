@@ -10,12 +10,14 @@ services:
       - PASSWORD=${WEB_PASSWORD}
       - DEFAULT_WORKSPACE=${DOCKER_ROOT}
     volumes:
-      # Configuración del editor (Extensiones, temas, etc)
       - ${APPDATA_PATH}/code-server/config:/config
-      # ACCESO MAESTRO: Para editar tus otros Stacks desde aquí
       - ${DOCKER_ROOT}:${DOCKER_ROOT}
     ports:
       - 8443:8443
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
     logging:
       driver: "json-file"
       options:
