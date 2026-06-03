@@ -3,13 +3,9 @@ services:
     image: adguard/adguardhome:latest
     container_name: adguardhome
     restart: unless-stopped
-    ports:
-      # DNS: Estos sí deben ser los estándar para que tus dispositivos los usen
-      #- "53:53/tcp"
-      #- "53:53/udp"
-      # Panel de Control: Cambiamos el 80 por el 3015 para evitar conflictos con UGOS
-      - "3015:80/tcp"   # <--- Panel web
-      - "3015:3000/tcp" # <--- Instalador inicial
+    networks:
+      adguard_macvlan:
+        ipv4_address: 192.168.1.53
     volumes:
       - ${APPDATA_PATH}/adguard/work:/opt/adguardhome/work
       - ${APPDATA_PATH}/adguard/conf:/opt/adguardhome/conf
@@ -24,9 +20,15 @@ services:
       options:
         max-size: "${LOG_MAX_SIZE}"
         max-file: "${LOG_MAX_FILE}"
-    networks:
-      - bearslions_network
 
 networks:
-  bearslions_network:
-    external: true
+  adguard_macvlan:
+    name: adguard_macvlan
+    driver: macvlan
+    driver_opts:
+      parent: eth0
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
+          ip_range: 192.168.1.53/32
