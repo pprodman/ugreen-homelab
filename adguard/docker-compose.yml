@@ -5,11 +5,11 @@ services:
     restart: unless-stopped
     ports:
       # DNS: Estos sí deben ser los estándar para que tus dispositivos los usen
-      - "53:53/tcp"
-      - "53:53/udp"
-      # Panel de Control: Cambiamos el 80 por el 3030 para evitar conflictos con UGOS
-      - "3030:80/tcp"   # <--- Panel web en el 3030
-      - "3030:3000/tcp" # <--- Instalador inicial en el 3030
+      #- "53:53/tcp"
+      #- "53:53/udp"
+      # Panel de Control: Cambiamos el 80 por el 3015 para evitar conflictos con UGOS
+      - "3015:80/tcp"   # <--- Panel web
+      - "3015:3000/tcp" # <--- Instalador inicial
     volumes:
       - ${APPDATA_PATH}/adguard/work:/opt/adguardhome/work
       - ${APPDATA_PATH}/adguard/conf:/opt/adguardhome/conf
