@@ -7,11 +7,11 @@ services:
       # DNS: Estos sí deben ser los estándar para que tus dispositivos los usen
       - "53:53/tcp"
       - "53:53/udp"
-      # Panel de Control: Cambiamos el 80 por el 3000 para evitar conflictos con UGOS
-      - "3000:80/tcp"
+      # Panel de Control: Cambiamos el 80 por el 3010 para evitar conflictos con UGOS
+      - "3010:80/tcp"
       # Otros puertos útiles (opcional)
       - "853:853/tcp" # DNS over TLS
-      - "3000:3000/tcp" # Setup inicial
+      - "3010:3000/tcp" # Setup inicial (puerto interno 3000)
     volumes:
       - ${APPDATA_PATH}/adguard/work:/opt/adguardhome/work
       - ${APPDATA_PATH}/adguard/conf:/opt/adguardhome/conf
