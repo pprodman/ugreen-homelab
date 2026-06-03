@@ -2,7 +2,7 @@ services:
   pangolin-agent:
     image: fosrl/newt:latest
     container_name: newt
-    restart: unless-stopped
+    restart: always
     environment:
       - PANGOLIN_ENDPOINT=${PANGOLIN_ENDPOINT}
       - NEWT_ID=${NEWT_ID}
