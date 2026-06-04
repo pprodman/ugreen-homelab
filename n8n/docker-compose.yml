@@ -8,6 +8,7 @@ services:
       - GENERIC_TIMEZONE=${TZ}
       - N8N_HOST=${N8N_HOST}
       - N8N_PROTOCOL=https
+      - N8N_TRUST_PROXY=true
       - NODE_ENV=production
       - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
