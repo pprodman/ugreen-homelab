@@ -6,7 +6,7 @@ services:
     networks:
       adguard_macvlan:
         ipv4_address: 192.168.1.53
-      bearslions_network:
+      bearslions_network: {}
     volumes:
       - ${APPDATA_PATH}/adguard/work:/opt/adguardhome/work
       - ${APPDATA_PATH}/adguard/conf:/opt/adguardhome/conf
