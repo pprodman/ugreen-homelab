@@ -9,6 +9,7 @@ services:
       - N8N_HOST=${N8N_HOST}
       - N8N_PROTOCOL=https
       - N8N_TRUST_PROXY=true
+      - N8N_PROXY_HOPS=1
       - NODE_ENV=production
       - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
