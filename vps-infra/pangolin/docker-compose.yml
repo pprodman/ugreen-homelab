@@ -62,7 +62,7 @@ services:
     restart: unless-stopped
     environment:
       - DOCKHAND_SERVER_URL=wss://dockhand.bearslions.com/api/hawser/connect
-      - TOKEN=2cYIk1QfwYUI5vM3g7Gm4FUcDeWQ6MR18iZrI0QE_M8
+      - TOKEN=${TOKEN}
       - AGENT_NAME=vps-pangolin
       - LOG_LEVEL=info
     volumes:
