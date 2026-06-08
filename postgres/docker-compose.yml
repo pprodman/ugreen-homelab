@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  n8n_postgres:
+    image: postgis/postgis:15-3.3
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - ${APPDATA_PATH}/postgres:/var/lib/postgresql/data # Carpeta local para los binarios de la BD
+    ports:
+      - "5433:5432" # Expone 5433 para DBeaver. El 5432 de tu NAS queda libre para Immich
+    networks:
+      - bearslions_network
+
+networks:
+  bearslions_network:
+    external: true
