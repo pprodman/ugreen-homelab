@@ -13,6 +13,14 @@ services:
       - NODE_ENV=production
       - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+
+      # --- INYECCIONES PARA LA BASE DE DATOS DE TRACKING ---
+      - N8N_ALLOW_ENV_VARIABLES=true # Permite que n8n lea variables del sistema en expresiones
+      - PROPTECH_DB_HOST=postgres # Apunta al container_name del nuevo stack de Postgres
+      - PROPTECH_DB_PORT=5432         # Puerto interno de comunicación en la red de Docker
+      - PROPTECH_DB_NAME=${PROPTECH_DB_NAME}
+      - PROPTECH_DB_USER=${PROPTECH_DB_USER}
+      - PROPTECH_DB_PASSWORD=${PROPTECH_DB_PASSWORD}
     volumes:
       - ${APPDATA_PATH}/n8n:/home/node/.n8n
     ports:
