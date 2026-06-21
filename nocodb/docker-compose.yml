@@ -1,29 +1,14 @@
 services:
-  nocodb-db:
-    image: postgres:16-alpine
-    container_name: nocodb-postgres
+  baserow:
+    container_name: baserow
+    image: baserow/baserow:1.30.0 # Es recomendable fijar versión
     restart: always
     environment:
-      POSTGRES_DB: nocodb_db
-      POSTGRES_USER: noco_user
-      POSTGRES_PASSWORD: ${NOCODB_DB_PASSWORD}
+      BASEROW_PUBLIC_URL: "http://192.168.1.225:8086" # Cambia por tu IP o dominio
     ports:
-      - "5435:5432"
+      - "8086:80"
     volumes:
-      - /volume2/docker/appdata/nocodb/pg_data:/var/lib/postgresql/data
-    networks:
-      - bearslions_network
-
-  nocodb:
-    image: nocodb/nocodb:latest
-    container_name: nocodb-app
-    restart: always
-    environment:
-      NC_DB: "pg://nocodb-postgres:5432?u=noco_user&p=${NOCODB_DB_PASSWORD}&d=nocodb_db"
-    ports:
-      - "8085:8080"
-    depends_on:
-      - nocodb-db
+      - /volume2/docker/appdata/baserow:/baserow/data
     networks:
       - bearslions_network
 
