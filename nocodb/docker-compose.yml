@@ -12,7 +12,7 @@ services:
     volumes:
       - /volume2/docker/appdata/nocodb/pg_data:/var/lib/postgresql/data
     networks:
-      - bearslions
+      - bearslions_network
 
   nocodb:
     image: nocodb/nocodb:latest
@@ -25,8 +25,8 @@ services:
     depends_on:
       - nocodb-db
     networks:
-      - bearslions
+      - bearslions_network
 
 networks:
-  bearslions:
+  bearslions_network:
     external: true
