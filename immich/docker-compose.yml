@@ -3,7 +3,7 @@ services:
     container_name: immich_server
     image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
     volumes:
-      - ${APPDATA_PATH}/immich/album:/usr/src/app/upload # modificar 
+      - ${IMMICH_UPLOAD_LOCATION}:/usr/src/app/upload
       - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=${TZ}
@@ -91,8 +91,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD} # Se hereda de la variable de Dockhand
       - POSTGRES_USER=postgres
       - POSTGRES_DB=immich
-      # --- OPTIMIZACIÓN HDD MECÁNICOS ---
-      - DB_STORAGE_TYPE=HDD
+      - DB_STORAGE_TYPE=SDD
     volumes:
       - ${APPDATA_PATH}/immich/postgres:/var/lib/postgresql/data
     shm_size: 512mb
