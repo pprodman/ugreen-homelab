@@ -91,7 +91,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD} # Se hereda de la variable de Dockhand
       - POSTGRES_USER=postgres
       - POSTGRES_DB=immich
-      - DB_STORAGE_TYPE=SDD
+      - DB_STORAGE_TYPE=SSD
     volumes:
       - ${APPDATA_PATH}/immich/postgres:/var/lib/postgresql/data
     shm_size: 512mb
