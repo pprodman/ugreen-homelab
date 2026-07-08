@@ -9,18 +9,21 @@ services:
       - N8N_HOST=${N8N_HOST}
       - N8N_PROTOCOL=https
       - N8N_TRUST_PROXY=true
-      - N8N_PROXY_HOPS=1
+      - N8N_PROXY_HOPS=2
       - NODE_ENV=production
       - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+  # --- Limpieza automática de ejecuciones ---
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=336        # horas = 14 días
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all # o "none" si no necesitas auditar runs exitosos
+  # --- Privacidad / rendimiento ---
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_RUNNERS_ENABLED=true # recomendado por n8n, evita warnings en versiones recientes
+  # --- Timeout de ejecución (tu Delta Engine + Gemini en batch puede tardar) ---
+      - EXECUTIONS_TIMEOUT=3600
+      - EXECUTIONS_TIMEOUT_MAX=7200
 
-      # --- INYECCIONES PARA LA BASE DE DATOS DE TRACKING ---
-      - N8N_ALLOW_ENV_VARIABLES=true # Permite que n8n lea variables del sistema en expresiones
-      - PROPTECH_DB_HOST=postgres # Apunta al container_name del nuevo stack de Postgres
-      - PROPTECH_DB_PORT=5432         # Puerto interno de comunicación en la red de Docker
-      - PROPTECH_DB_NAME=${PROPTECH_DB_NAME}
-      - PROPTECH_DB_USER=${PROPTECH_DB_USER}
-      - PROPTECH_DB_PASSWORD=${PROPTECH_DB_PASSWORD}
     volumes:
       - ${APPDATA_PATH}/n8n:/home/node/.n8n
     ports:
