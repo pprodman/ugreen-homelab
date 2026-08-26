@@ -4,6 +4,7 @@ services:
     image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
     volumes:
       - ${IMMICH_UPLOAD_LOCATION}:/usr/src/app/upload
+      - ${EXTERNAL_LIBRARY}:/fotos_pablo:ro
       - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=${TZ}
