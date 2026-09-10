@@ -13,6 +13,7 @@ services:
       - NODE_ENV=production
       - N8N_WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
 
       # --- Gestión de Memoria (Evita el fallo Out of Memory) ---
       - NODE_OPTIONS=--max-old-space-size=1536
