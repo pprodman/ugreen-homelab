@@ -7,7 +7,7 @@ dwh_financial:
       type: postgres
 
       host: "{{ env_var('DBT_HOST') }}"
-      port: "{{ env_var('DBT_PORT') }}"
+      port: "{{ env_var('DBT_PORT') | as_number }}"
 
       user: "{{ env_var('DBT_USER') }}"
       password: "{{ env_var('DBT_PASSWORD') }}"
