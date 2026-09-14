@@ -1,0 +1,32 @@
+services:
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: dbt-financial
+
+    working_dir: /workspace
+
+    volumes:
+      - ./project:/workspace
+
+    environment:
+      TZ: ${TZ}
+      DBT_PROFILES_DIR: /workspace
+
+      DBT_HOST: postgres
+      DBT_PORT: 5432
+      DBT_DATABASE: ${DB_POSTGRES_SYSTEM_DB}
+      DBT_USER: ${DB_POSTGRES_SYSTEM_USER}
+      DBT_PASSWORD: ${DB_POSTGRES_SYSTEM_PASSWORD}
+
+    networks:
+      - bearslions_network
+
+    restart: "no"
+    command: ["debug"]
+
+networks:
+  bearslions_network:
+    external: true

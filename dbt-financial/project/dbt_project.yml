@@ -1,0 +1,37 @@
+name: dwh_financial
+version: "1.0.0"
+config-version: 2
+
+profile: dwh_financial
+
+model-paths:
+  - models
+
+seed-paths:
+  - seeds
+
+test-paths:
+  - tests
+
+macro-paths:
+  - macros
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  dwh_financial:
+
+    staging:
+      +schema: stg
+      +materialized: view
+
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+
+    marts:
+      +schema: marts
+      +materialized: table
