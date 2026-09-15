@@ -10,8 +10,17 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-WORKDIR /workspace
-
 COPY app.py /app/app.py
 
-ENTRYPOINT ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+WORKDIR /workspace
+
+ENTRYPOINT [
+    "uvicorn",
+    "app:app",
+    "--app-dir",
+    "/app",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8080"
+]
