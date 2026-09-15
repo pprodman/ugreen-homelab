@@ -25,7 +25,7 @@ services:
       - bearslions_network
 
     restart: "no"
-    command: ["debug"]
+    command: ["parse"]
 
 networks:
   bearslions_network:
