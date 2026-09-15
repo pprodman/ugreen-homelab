@@ -25,7 +25,7 @@ services:
       - bearslions_network
 
     restart: "no"
-    command: ["ls", "--resource-type", "model"]
+    command: ["compile", "--select", "staging.bankinter_account_personal"]
 
 networks:
   bearslions_network:
