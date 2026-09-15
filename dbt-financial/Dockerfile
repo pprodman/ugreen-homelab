@@ -14,13 +14,4 @@ COPY app.py /app/app.py
 
 WORKDIR /workspace
 
-ENTRYPOINT [
-    "uvicorn",
-    "app:app",
-    "--app-dir",
-    "/app",
-    "--host",
-    "0.0.0.0",
-    "--port",
-    "8080"
-]
+ENTRYPOINT ["uvicorn", "app:app", "--app-dir", "/app", "--host", "0.0.0.0", "--port", "8080"]
