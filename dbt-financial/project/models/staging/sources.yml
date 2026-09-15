@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: raw
+    database: dwh_financial
+    schema: raw
+
+    tables:
+      - name: bankinter_account_personal
+      - name: bankinter_account_common
+      - name: bankinter_card_personal
+      - name: bankinter_card_common
+      - name: bankinter_card_common_lledo
+      - name: cash
+      - name: revolut_account

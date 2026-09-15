@@ -13,6 +13,6 @@ dwh_financial:
       password: "{{ env_var('DBT_PASSWORD') }}"
 
       dbname: "{{ env_var('DBT_DATABASE') }}"
-      schema: stg
+      schema: public
 
-      threads: 2
+      threads: 2 
