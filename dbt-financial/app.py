@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 app = FastAPI(
     title="DWH Financial dbt Runner",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 
@@ -39,11 +39,60 @@ class RunRequest(BaseModel):
 
 
 # -------------------------------------------------------------------
+# Configuración
+# -------------------------------------------------------------------
+
+ALLOWED_SELECTS = {
+    "staging",
+    "intermediate",
+    "marts",
+    "staging+",
+    "intermediate+",
+    "marts+",
+    "*",
+}
+
+
+# -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
 
 def utc_now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def validate_select(select: str):
+    """
+    Permite uno o varios selectores dbt separados por espacios.
+
+    Ejemplos válidos:
+        staging
+        intermediate
+        staging intermediate
+        staging intermediate marts
+        staging+ intermediate+
+        *
+    """
+
+    selectors = select.split()
+
+    if not selectors:
+        raise HTTPException(
+            status_code=400,
+            detail="Select cannot be empty."
+        )
+
+    invalid = [
+        selector
+        for selector in selectors
+        if selector not in ALLOWED_SELECTS
+    ]
+
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid select(s): {', '.join(invalid)}"
+        )
 
 
 def run_dbt(select: str, full_refresh: bool):
@@ -53,7 +102,7 @@ def run_dbt(select: str, full_refresh: bool):
         "dbt",
         "run",
         "--select",
-        select,
+        *select.split(),
     ]
 
     if full_refresh:
@@ -124,21 +173,7 @@ def status():
 @app.post("/run")
 def run(request: RunRequest):
 
-    allowed_selects = {
-        "staging",
-        "intermediate",
-        "marts",
-        "staging+",
-        "intermediate+",
-        "marts+",
-        "*",
-    }
-
-    if request.select not in allowed_selects:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid select: {request.select}"
-        )
+    validate_select(request.select)
 
     if not execution_lock.acquire(blocking=False):
         raise HTTPException(
