@@ -13,3 +13,10 @@ sources:
       - name: bankinter_card_common_lledo
       - name: cash
       - name: revolut_account
+      - name: dim_account
+
+  - name: stg
+    database: dwh_financial
+    schema: stg
+    tables:
+      - name: dim_account

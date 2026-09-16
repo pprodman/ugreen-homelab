@@ -19,13 +19,13 @@ base AS (
         NULL::NUMERIC(18,2) as balance,
         t.source_row_id,
         t.loaded_at,
-        a.account_name, 
-        a.bank,
-        a.account_type,
-        a.owner AS account_ownership
+        da.account_name, 
+        da.bank,
+        da.account_type,
+        da.owner AS account_ownership
     FROM cards_stg t
-    LEFT JOIN {{ ref('dim_account') }} a
-        ON t.account_id = a.account_id
+    LEFT JOIN {{ source('stg', 'dim_account') }} da
+        ON t.account_id = da.account_id
 ),
 
 classified_nature AS (
