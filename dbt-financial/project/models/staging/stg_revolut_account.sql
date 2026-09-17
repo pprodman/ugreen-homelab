@@ -29,4 +29,4 @@ SELECT
     updated_at::TIMESTAMPTZ                 AS updated_at
 
 FROM {{ source('raw', 'revolut_account') }}
-WHERE UPPER(TRIM(state)) = 'COMPLETED'
+WHERE UPPER(TRIM(state)) = 'COMPLETADO'
