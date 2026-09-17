@@ -39,26 +39,18 @@ classified_nature AS (
 )
 
 SELECT
-    -- Identificadores y dimensiones de cuenta
-    source_hash,
-    account_id,
-    account_name,
-    bank,
-    account_type,
-    account_ownership,
-
     -- Fechas
-    booking_date,
     value_date,
+    booking_date,
 
     -- Transacción
     description,
     amount,
+    balance,
     CASE 
-        WHEN account_ownership = 'común' THEN ROUND(amount / 2.0, 2)
+        WHEN account_ownership = 'common' THEN ROUND(amount / 2.0, 2)
         ELSE amount
     END AS personal_amount,
-    balance,
 
     -- Clasificación analítica derivada
     transaction_nature,
@@ -68,6 +60,13 @@ SELECT
     END AS movement_type,
 
     TRUE AS is_pnl,
+
+    -- Identificadores y dimensiones de cuenta
+    account_id,
+    bank,
+    account_type,
+    account_ownership,
+    source_hash,
 
     -- Auditoría
     source_row_id,

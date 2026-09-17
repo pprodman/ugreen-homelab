@@ -36,23 +36,15 @@ classified_nature AS (
 )
 
 SELECT
-    -- Identificadores y dimensiones de cuenta
-    source_hash,
-    account_id,
-    account_name,
-    bank,
-    account_type,
-    account_ownership,
-
     -- Fechas
-    booking_date,
     value_date,
+    booking_date,
 
     -- Transacción
     description,
     amount,
-    round(amount / 2.0, 2) AS personal_amount,
     balance,
+    ROUND(amount / 2.0, 2) AS personal_amount,
 
     -- Clasificación analítica derivada
     transaction_nature,
@@ -68,6 +60,13 @@ SELECT
         WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION') THEN FALSE
         ELSE TRUE
     END AS is_pnl,
+
+    -- Identificadores y dimensiones de cuenta
+    account_id,
+    bank,
+    account_type,
+    account_ownership,
+    source_hash,
 
     -- Auditoría
     source_row_id,

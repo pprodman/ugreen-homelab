@@ -39,31 +39,23 @@ classified_nature AS (
 )
 
 SELECT
-    -- Identificadores y dimensiones de cuenta
-    source_hash,
-    account_id,
-    account_name,
-    bank,
-    account_type,
-    account_ownership,
-
     -- Fechas
-    booking_date,
     value_date,
+    booking_date,
 
     -- Transacción
     description,
     (amount + fee) AS amount,
-    amount AS personal_amount,
     balance,
+    (amount + fee) AS personal_amount,
 
     -- Clasificación analítica derivada
     transaction_nature,
 
     CASE
         WHEN transaction_nature = 'INTERNAL_TRANSFER' THEN 'TRANSFER'
-        WHEN amount > 0 THEN 'INCOME'
-        WHEN amount < 0 THEN 'EXPENSE'
+        WHEN (amount + fee) > 0 THEN 'INCOME'
+        WHEN (amount + fee) < 0 THEN 'EXPENSE'
         ELSE 'NEUTRAL'
     END AS movement_type,
 
@@ -71,6 +63,13 @@ SELECT
         WHEN transaction_nature = 'INTERNAL_TRANSFER' THEN FALSE
         ELSE TRUE
     END AS is_pnl,
+
+    -- Identificadores y dimensiones de cuenta
+    account_id,
+    bank,
+    account_type,
+    account_ownership,
+    source_hash,
 
     -- Auditoría
     source_row_id,
