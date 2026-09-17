@@ -1,7 +1,3 @@
-{{ config(
-    materialized='view'
-) }}
-
 SELECT
     -- Identificación de la cuenta
     'CASH'::VARCHAR(50)                     AS account_id,

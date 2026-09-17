@@ -1,7 +1,3 @@
-{{ config(
-    materialized='view'
-) }}
-
 SELECT
     -- Identificación de la cuenta
     'BANKINTER_CARD_COMMON_LLEDO'::VARCHAR(50) AS account_id,

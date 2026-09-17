@@ -1,5 +1,3 @@
-{{ config(materialized='view') }}
-
 WITH cards_stg AS (
     SELECT * FROM {{ ref('stg_bankinter_card_personal') }}
     UNION ALL
