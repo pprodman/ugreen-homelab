@@ -71,3 +71,4 @@ SELECT
     loaded_at
     
 from classified_nature
+ORDER BY source_row_id ASC

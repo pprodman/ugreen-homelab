@@ -51,3 +51,4 @@ SELECT
     loaded_at
 
 FROM base
+ORDER BY source_row_id ASC
