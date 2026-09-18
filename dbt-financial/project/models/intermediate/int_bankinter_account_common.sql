@@ -37,9 +37,12 @@ classified_nature AS (
             WHEN description ILIKE '%LIQUID. CUOTA PTMO%' 
                 THEN 'MORTGAGE_PAYMENT'
             -- 6. Bizum en cuenta común
-            WHEN description ~* 'BIZUM' 
+            WHEN description ~* 'BIZUM'
                 THEN 'BIZUM'
-            -- 7. Resto de recibos, suministros y provisiones de fondos
+            -- 7. Reembolsos y devoluciones comerciales (importes positivos como 'ANUL.')
+            WHEN description ~* 'ANUL'
+                THEN 'EXPENSE_REFUND'
+            -- 8. Resto de recibos, suministros y provisiones de fondos
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
@@ -61,6 +64,7 @@ SELECT
 
     CASE
         WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION', 'LOAN_DISBURSEMENT') THEN 'TRANSFER'
+        WHEN transaction_nature = 'EXPENSE_REFUND' THEN 'EXPENSE'
         WHEN amount > 0 THEN 'INCOME'
         WHEN amount < 0 THEN 'EXPENSE'
         ELSE 'NEUTRAL'

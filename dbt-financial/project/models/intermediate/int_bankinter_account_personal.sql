@@ -33,7 +33,10 @@ classified_nature AS (
             -- 4. Pagos/Cobros por Bizum asociados a la cuenta personal
             WHEN description ~* 'BIZUM' 
                 THEN 'BIZUM'
-            -- 5. Recibos de suministros, hipoteca, seguros y gastos ordinarios    
+            -- 5. Reembolsos y devoluciones comerciales (importes positivos como 'ANUL.')
+            WHEN description ~* 'ANUL'
+                THEN 'EXPENSE_REFUND'
+            -- 6. Recibos de suministros, hipoteca, seguros y gastos ordinarios    
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
@@ -55,9 +58,9 @@ SELECT
 
     CASE
         WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER') THEN 'TRANSFER'
+        WHEN transaction_nature = 'EXPENSE_REFUND' THEN 'EXPENSE'
         WHEN amount > 0 THEN 'INCOME'
         WHEN amount < 0 THEN 'EXPENSE'
-        ELSE 'NEUTRAL'
     END AS movement_type,
 
     CASE
