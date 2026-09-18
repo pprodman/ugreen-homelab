@@ -30,7 +30,8 @@ classified_nature AS (
         *,
         CASE
             -- Reembolsos y devoluciones comerciales (importes positivos como 'ANUL.')
-            WHEN amount > 0 THEN 'EXPENSE_REFUND'
+            WHEN description ~* 'ANUL'
+                THEN 'EXPENSE_REFUND'
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
