@@ -21,19 +21,25 @@ classified_nature AS (
     SELECT
         *,
         CASE
-            -- 1. Liquidación mensual de la tarjeta de la cuenta común
+            -- 1. Liquidación de la tarjeta común
             WHEN description ILIKE '%RECIBO VISA CLASICA%' 
                 THEN 'CARD_SETTLEMENT'
-            -- 2. Aportaciones periódicas de ambos titulares (cubre con o sin barras/espacios)
+            -- 2. Aportaciones periódicas de los titulares
             WHEN description ~* 'PABLO RODRIGUEZ|LLED[OÓ] AMOROS' 
                 THEN 'PARTNER_CONTRIBUTION'
             -- 3. Traspasos internos
             WHEN description ILIKE '%TRASPASO INTERNO%' 
                 THEN 'INTERNAL_TRANSFER'
-            -- 4. Pagos por Bizum asociados a la cuenta común
+            -- 4. Disposiciones de capital del préstamo (financiación / balance, no P&L)
+            WHEN description ~* 'IMP INIC PT|IMP DISP PT' 
+                THEN 'LOAN_DISBURSEMENT'
+            -- 5. Cuotas mensuales de la hipoteca
+            WHEN description ILIKE '%LIQUID. CUOTA PTMO%' 
+                THEN 'MORTGAGE_PAYMENT'
+            -- 6. Bizum en cuenta común
             WHEN description ~* 'BIZUM' 
                 THEN 'BIZUM'
-            -- 5. Recibos de suministros, hipoteca, seguros y gastos ordinarios
+            -- 7. Resto de recibos, suministros y provisiones de fondos
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
@@ -54,14 +60,14 @@ SELECT
     transaction_nature,
 
     CASE
-        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION') THEN 'TRANSFER'
+        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION', 'LOAN_DISBURSEMENT') THEN 'TRANSFER'
         WHEN amount > 0 THEN 'INCOME'
         WHEN amount < 0 THEN 'EXPENSE'
         ELSE 'NEUTRAL'
     END AS movement_type,
 
     CASE
-        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION') THEN FALSE
+        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION', 'LOAN_DISBURSEMENT') THEN FALSE
         ELSE TRUE
     END AS is_pnl,
 
