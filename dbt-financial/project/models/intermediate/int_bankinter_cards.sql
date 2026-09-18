@@ -55,6 +55,7 @@ SELECT
     transaction_nature,
 
     CASE
+        WHEN transaction_nature = 'EXPENSE_REFUND' THEN 'EXPENSE'
         WHEN amount > 0 THEN 'INCOME'
         WHEN amount < 0 THEN 'EXPENSE'
         ELSE 'NEUTRAL'
