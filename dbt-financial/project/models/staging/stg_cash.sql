@@ -17,3 +17,4 @@ SELECT
     updated_at::TIMESTAMPTZ                 AS updated_at
 
 FROM {{ source('raw', 'cash') }}
+ORDER BY source_row_id ASC

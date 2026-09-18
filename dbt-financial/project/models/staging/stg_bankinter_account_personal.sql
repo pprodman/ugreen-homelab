@@ -18,3 +18,4 @@ SELECT
     updated_at::TIMESTAMPTZ                 AS updated_at
 
 FROM {{ source('raw', 'bankinter_account_personal') }}
+ORDER BY source_row_id ASC

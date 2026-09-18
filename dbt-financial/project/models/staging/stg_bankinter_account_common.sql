@@ -17,4 +17,5 @@ SELECT
     loaded_at::TIMESTAMPTZ                  AS loaded_at,
     updated_at::TIMESTAMPTZ                 AS updated_at
 
-FROM {{ source('raw', 'bankinter_account_common') }} 
+FROM {{ source('raw', 'bankinter_account_common') }}
+ORDER BY source_row_id ASC

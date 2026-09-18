@@ -9,7 +9,6 @@ WITH base AS (
         t.balance,
         t.source_row_id,
         t.loaded_at,
-        da.account_name,
         da.bank,
         da.account_type,
         da.owner AS account_ownership
@@ -22,16 +21,23 @@ classified_nature AS (
     SELECT
         *,
         CASE
-            WHEN description ilike '%RECIBO PLATINUM%' 
+            -- 1. Liquidación mensual de la tarjeta de la cuenta personal
+            WHEN description ILIKE '%RECIBO PLATINUM%' 
                 THEN 'CARD_SETTLEMENT'
-            WHEN description ~* 'CUENTA T[UÚ] Y YO|RECARGA REVOLUT|TRASPASO INTERNO' 
+            -- 2. Traspasos internos de la cuenta personal
+            WHEN description ~* 'CUENTA T[UÚ] Y YO|RECARGA REVOLUT|TRASPASO INTERNO|PABLO RODRIGUEZ' 
                 THEN 'INTERNAL_TRANSFER'
-            WHEN description ~* 'TRANSF NOMI' 
+            -- 3. Ingresos salariales
+            WHEN description ~* 'TRANSF NOMI|PRESTACIONES SEGURIDAD SOCIAL' 
                 THEN 'SALARY'
+            -- 4. Pagos/Cobros por Bizum asociados a la cuenta personal
+            WHEN description ~* 'BIZUM' 
+                THEN 'BIZUM'
+            -- 5. Recibos de suministros, hipoteca, seguros y gastos ordinarios    
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
-)
+) 
 
 SELECT
     -- Fechas

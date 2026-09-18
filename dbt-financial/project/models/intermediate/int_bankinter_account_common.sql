@@ -9,7 +9,6 @@ WITH base AS (
         t.balance,
         t.source_row_id,
         t.loaded_at,
-        da.account_name,
         da.bank,
         da.account_type,
         da.owner AS account_ownership
@@ -22,12 +21,19 @@ classified_nature AS (
     SELECT
         *,
         CASE
-            WHEN description ilike '%RECIBO VISA CLASICA%' 
+            -- 1. Liquidación mensual de la tarjeta de la cuenta común
+            WHEN description ILIKE '%RECIBO VISA CLASICA%' 
                 THEN 'CARD_SETTLEMENT'
-            WHEN description ~* 'TRANS/?PABLO|TRANSF I/? ?LLEDO' 
+            -- 2. Aportaciones periódicas de ambos titulares (cubre con o sin barras/espacios)
+            WHEN description ~* 'PABLO RODRIGUEZ|LLED[OÓ] AMOROS' 
                 THEN 'PARTNER_CONTRIBUTION'
-            WHEN description ilike '%TRASPASO INTERNO%' 
+            -- 3. Traspasos internos
+            WHEN description ILIKE '%TRASPASO INTERNO%' 
                 THEN 'INTERNAL_TRANSFER'
+            -- 4. Pagos por Bizum asociados a la cuenta común
+            WHEN description ~* 'BIZUM' 
+                THEN 'BIZUM'
+            -- 5. Recibos de suministros, hipoteca, seguros y gastos ordinarios
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base

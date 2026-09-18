@@ -26,3 +26,4 @@ SELECT
 
 FROM {{ source('raw', 'revolut_account') }}
 WHERE UPPER(TRIM(state)) = 'COMPLETADO'
+ORDER BY source_row_id ASC

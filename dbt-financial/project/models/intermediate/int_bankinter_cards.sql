@@ -1,4 +1,4 @@
-WITH cards_stg AS (
+WITH cards_staging AS (
     SELECT * FROM {{ ref('stg_bankinter_card_personal') }}
     UNION ALL
     SELECT * FROM {{ ref('stg_bankinter_card_common') }}
@@ -10,18 +10,17 @@ base AS (
     SELECT
         t.source_hash,
         t.account_id,
-        t.billing_date AS booking_date,
         t.value_date,
+        t.billing_date AS booking_date,
         t.description,
         t.amount,
-        NULL::NUMERIC(18,2) as balance,
+        NULL::NUMERIC(18,2) AS balance,
         t.source_row_id,
         t.loaded_at,
-        da.account_name, 
         da.bank,
         da.account_type,
         da.owner AS account_ownership
-    FROM cards_stg t
+    FROM cards_staging t
     LEFT JOIN {{ source('stg', 'dim_account') }} da
         ON t.account_id = da.account_id
 ),
@@ -29,7 +28,8 @@ base AS (
 classified_nature AS (
     SELECT
         *,
-        CASE 
+        CASE
+            -- Reembolsos y devoluciones comerciales (importes positivos como 'ANUL.')
             WHEN amount > 0 THEN 'EXPENSE_REFUND'
             ELSE 'REGULAR'
         END AS transaction_nature
@@ -45,16 +45,18 @@ SELECT
     description,
     amount,
     balance,
-    CASE 
+    CASE
         WHEN account_ownership = 'common' THEN ROUND(amount / 2.0, 2)
         ELSE amount
     END AS personal_amount,
 
     -- Clasificación analítica derivada
     transaction_nature,
-    CASE 
+
+    CASE
         WHEN amount > 0 THEN 'INCOME'
-        ELSE 'EXPENSE'
+        WHEN amount < 0 THEN 'EXPENSE'
+        ELSE 'NEUTRAL'
     END AS movement_type,
 
     TRUE AS is_pnl,
@@ -69,6 +71,6 @@ SELECT
     -- Auditoría
     source_row_id,
     loaded_at
-    
-from classified_nature
+
+FROM classified_nature
 ORDER BY source_row_id ASC
