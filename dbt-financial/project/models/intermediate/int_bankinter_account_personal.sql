@@ -21,26 +21,26 @@ classified_nature AS (
     SELECT
         *,
         CASE
-            -- 1. Liquidación mensual de la tarjeta de la cuenta personal
-            WHEN description ILIKE '%RECIBO PLATINUM%' 
+            -- 1. Liquidación mensual de tarjeta de la cuenta personal
+            WHEN description ~* 'RECIBO PLATINUM' 
                 THEN 'CARD_SETTLEMENT'
-            -- 2. Traspasos internos de la cuenta personal
+            -- 2. Traspasos internos
             WHEN description ~* 'CUENTA T[UÚ] Y YO|RECARGA REVOLUT|TRASPASO INTERNO|PABLO RODRIGUEZ' 
                 THEN 'INTERNAL_TRANSFER'
-            -- 3. Ingresos salariales
+            -- 3. Ingresos salariales y prestaciones
             WHEN description ~* 'TRANSF NOMI|PRESTACIONES SEGURIDAD SOCIAL' 
                 THEN 'SALARY'
-            -- 4. Pagos/Cobros por Bizum asociados a la cuenta personal
+            -- 4. Pagos/Cobros por Bizum
             WHEN description ~* 'BIZUM' 
                 THEN 'BIZUM'
-            -- 5. Reembolsos y devoluciones comerciales (importes positivos como 'ANUL.')
-            WHEN description ~* 'ANUL'
+            -- 5. Reembolsos comerciales estrictos (patrón delimitado + importe positivo)
+            WHEN description ~* '\yANUL' AND amount > 0 
                 THEN 'EXPENSE_REFUND'
-            -- 6. Recibos de suministros, hipoteca, seguros y gastos ordinarios    
+            -- 6. Recibos y transacciones ordinarias
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
-) 
+)
 
 SELECT
     -- Fechas
@@ -58,15 +58,13 @@ SELECT
 
     CASE
         WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER') THEN 'TRANSFER'
-        WHEN transaction_nature = 'EXPENSE_REFUND' THEN 'EXPENSE'
+        WHEN transaction_nature = 'EXPENSE_REFUND' THEN 'EXPENSE' -- Contra-gasto (reduce gasto en suma algebraica)
         WHEN amount > 0 THEN 'INCOME'
         WHEN amount < 0 THEN 'EXPENSE'
+        ELSE 'NEUTRAL' -- Evita valores NULL en operaciones de importe 0.00
     END AS movement_type,
 
-    CASE
-        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER') THEN FALSE
-        ELSE TRUE
-    END AS is_pnl,
+    (transaction_nature NOT IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER')) AS is_pnl,
 
     -- Identificadores y dimensiones de cuenta
     account_id,

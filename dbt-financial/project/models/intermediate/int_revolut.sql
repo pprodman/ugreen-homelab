@@ -7,6 +7,7 @@ WITH base AS (
         t.description,
         t.amount,
         t.balance,
+        t.raw_transaction_type,
         t.source_row_id,
         t.loaded_at,
         da.bank,
@@ -15,22 +16,27 @@ WITH base AS (
     FROM {{ ref('stg_revolut_account') }} t
     LEFT JOIN {{ source('stg', 'dim_account') }} da
         ON t.account_id = da.account_id
+    WHERE t.state = 'COMPLETADO' -- Excluye las operaciones fallidas o devueltas
 ),
 
 classified_nature AS (
     SELECT
         *,
         CASE
-            -- 1. Traspasos internos (recargas con tarjeta/Apple Pay, cambios de divisa, migraciones de saldo o transferencias propias)
-            WHEN description ~* 'RECARGA|CONVERSI[OÓ]N|BALANCE MIGRATION|PABLO RODRIGUEZ' 
+            -- 1. Fondeos nativos de Revolut
+            WHEN raw_transaction_type IN ('Recargas') 
                 THEN 'INTERNAL_TRANSFER'
-            -- 2. Recompensas, promociones y cashback
-            WHEN description ~* 'REWARD|PROMO|PERK|CASHBACK' 
+            -- 2. Transferencias: aislar migraciones de saldo y fondeos propios
+            WHEN raw_transaction_type = 'Transferir' 
+                 AND description ~* 'balance migration|pablo rodriguez' 
+                THEN 'INTERNAL_TRANSFER'
+            -- 3. Bonificaciones y cashback
+            WHEN raw_transaction_type IN ('Recompensa', 'CASHBACK') 
                 THEN 'REWARD'
-            -- 3. Devoluciones comerciales con tarjeta
-            WHEN amount > 0 AND description NOT ILIKE '%TRANSFERENCIA DE%' 
+            -- 4. Devoluciones comerciales explícitas
+            WHEN raw_transaction_type = 'Reembolso de tarjeta' 
                 THEN 'EXPENSE_REFUND'
-            -- 4. Compras habituales y transferencias entre particulares
+            -- 5. Pagos con tarjeta y transferencias con terceros
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
@@ -58,10 +64,7 @@ SELECT
         ELSE 'NEUTRAL'
     END AS movement_type,
 
-    CASE
-        WHEN transaction_nature = 'INTERNAL_TRANSFER' THEN FALSE
-        ELSE TRUE
-    END AS is_pnl,
+    (transaction_nature != 'INTERNAL_TRANSFER') AS is_pnl,
 
     -- Identificadores y dimensiones de cuenta
     account_id,

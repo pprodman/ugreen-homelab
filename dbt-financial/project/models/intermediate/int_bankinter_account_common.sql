@@ -24,25 +24,25 @@ classified_nature AS (
             -- 1. Liquidación de la tarjeta común
             WHEN description ILIKE '%RECIBO VISA CLASICA%' 
                 THEN 'CARD_SETTLEMENT'
-            -- 2. Aportaciones periódicas de los titulares
+            -- 2. Aportaciones periódicas de los titulares (entradas y salidas)
             WHEN description ~* 'PABLO RODRIGUEZ|LLED[OÓ] AMOROS' 
                 THEN 'PARTNER_CONTRIBUTION'
             -- 3. Traspasos internos
             WHEN description ILIKE '%TRASPASO INTERNO%' 
                 THEN 'INTERNAL_TRANSFER'
-            -- 4. Disposiciones de capital del préstamo (financiación / balance, no P&L)
+            -- 4. Disposiciones de capital del préstamo hipotecario (balance / financiación)
             WHEN description ~* 'IMP INIC PT|IMP DISP PT' 
                 THEN 'LOAN_DISBURSEMENT'
-            -- 5. Cuotas mensuales de la hipoteca
+            -- 5. Cuotas mensuales de amortización e intereses
             WHEN description ILIKE '%LIQUID. CUOTA PTMO%' 
                 THEN 'MORTGAGE_PAYMENT'
-            -- 6. Bizum en cuenta común
-            WHEN description ~* 'BIZUM'
+            -- 6. Pagos/cobros por Bizum en cuenta común
+            WHEN description ~* 'BIZUM' 
                 THEN 'BIZUM'
-            -- 7. Reembolsos y devoluciones comerciales (importes positivos como 'ANUL.')
-            WHEN description ~* 'ANUL'
+            -- 7. Devoluciones comerciales estrictas (palabra delimitada e importe positivo)
+            WHEN description ~* '\yANUL' AND amount > 0 
                 THEN 'EXPENSE_REFUND'
-            -- 8. Resto de recibos, suministros y provisiones de fondos
+            -- 8. Suministros, comisiones, obra y recibos ordinarios
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base

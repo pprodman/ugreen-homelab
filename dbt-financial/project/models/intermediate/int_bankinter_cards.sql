@@ -29,8 +29,10 @@ classified_nature AS (
     SELECT
         *,
         CASE
-            -- Reembolsos y devoluciones comerciales (importes positivos como 'ANUL.')
-            WHEN description ~* 'ANUL'
+            -- Traspasos internos (recargas en Revolut)
+            WHEN description ~* 'REVOLUT' THEN 'INTERNAL_TRANSFER'
+            -- Reembolsos, abonos y anulaciones comerciales
+            WHEN description ~* 'ANUL|ABONO|DEVOLUC|REEMB' OR amount > 0
                 THEN 'EXPENSE_REFUND'
             ELSE 'REGULAR'
         END AS transaction_nature
@@ -55,13 +57,17 @@ SELECT
     transaction_nature,
 
     CASE
+        WHEN transaction_nature = 'INTERNAL_TRANSFER' THEN 'TRANSFER'
         WHEN transaction_nature = 'EXPENSE_REFUND' THEN 'EXPENSE'
-        WHEN amount > 0 THEN 'INCOME'
         WHEN amount < 0 THEN 'EXPENSE'
+        WHEN amount > 0 THEN 'INCOME'
         ELSE 'NEUTRAL'
     END AS movement_type,
 
-    TRUE AS is_pnl,
+    CASE
+        WHEN transaction_nature IN ('INTERNAL_TRANSFER') THEN FALSE
+        ELSE TRUE
+    END AS is_pnl,  
 
     -- Identificadores y dimensiones de cuenta
     account_id,
