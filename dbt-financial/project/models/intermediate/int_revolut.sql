@@ -16,7 +16,6 @@ WITH base AS (
     FROM {{ ref('stg_revolut_account') }} t
     LEFT JOIN {{ source('stg', 'dim_account') }} da
         ON t.account_id = da.account_id
-    WHERE t.state = 'COMPLETADO' -- Excluye las operaciones fallidas o devueltas
 ),
 
 classified_nature AS (
