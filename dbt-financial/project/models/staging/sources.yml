@@ -20,3 +20,7 @@ sources:
     schema: stg
     tables:
       - name: dim_account
+      - name: master_bizum
+      - name: dim_categories
+      - name: rules_mapping
+      - name: master_adjustments
