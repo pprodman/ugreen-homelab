@@ -19,7 +19,7 @@ best_keyword_match AS (
     SELECT DISTINCT ON (t.source_hash)
         t.*,
         r.category_id                                AS detected_category_id,
-        COALESCE(t.bizum_entity, r.merchant_entity)  AS detected_merchant
+        COALESCE(t.bizum_name, r.merchant_entity)  AS detected_merchant
     FROM bizum_normalized t
     LEFT JOIN {{ source('stg', 'rules_mapping') }} r
         ON t.clean_description ILIKE '%' || r.keyword || '%'
