@@ -82,10 +82,20 @@ final_intermediate AS (
             ELSE a.personal_amount
         END AS personal_amount,
 
-        -- B. FLAG DE GASTO COMPARTIDO
+        -- B. FLAG DE GASTO COMPARTIDO (is_shared)
         CASE
+            -- 1. Si NO es P&L o es una transferencia/fondeo, NUNCA es compartido
+            WHEN NOT COALESCE(cat.is_pnl, a.is_pnl) THEN FALSE
+            WHEN COALESCE(cat.movement_type, a.movement_type) = 'TRANSFER' THEN FALSE
+
+            -- 2. Overrides manuales de exclusividad
             WHEN a.adjustment_type IN ('PARTNER_EXPENSE', 'MY_EXPENSE') THEN FALSE
+
+            -- 3. Compras mixtas o gastos ordinarios en cuenta común
+            WHEN a.adjustment_type = 'PARTIAL_EXPENSE' THEN TRUE
             WHEN a.account_ownership = 'common' THEN TRUE
+
+            -- 4. Resto (cuentas individuales, tarjetas personales)
             ELSE FALSE
         END AS is_shared,
 
