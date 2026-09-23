@@ -11,33 +11,30 @@ WITH unioned AS (
 )
 
 SELECT
-    -- Clave primaria única generada a partir del hash de origen
-    source_hash AS transaction_id,
-
-    -- Fechas
+    -- 1. Fechas
     value_date,
     booking_date,
 
-    -- Detalle transacción
+    -- 2. Detalle de la transacción e importes
     description,
     amount,
-    balance,
     personal_amount,
+    balance,
 
-    -- Clasificación contable
+    -- 3. Clasificación contable básica
     transaction_nature,
     movement_type,
     is_pnl,
 
-    -- Dimensiones de cuenta
+    -- 4. Dimensiones de la cuenta / entidad
     account_id,
     bank,
     account_type,
     account_ownership,
 
-    -- Auditoría
-    source_hash,
+    -- 5. Auditoría e identificadores técnicos (al final)
     source_row_id,
+    source_hash,
     loaded_at
 
 FROM unioned

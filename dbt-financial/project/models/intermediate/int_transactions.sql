@@ -1,137 +1,180 @@
+{{ config(
+    materialized = 'view',
+    tags = ['intermediate', 'financial_core']
+) }}
+
 WITH base_unioned AS (
     SELECT * FROM {{ ref('int_transactions_unioned') }}
 ),
 
--- 1. Normalización semántica de Bizums
+-- 1. Normalización de descripciones de Bizum
 bizum_normalized AS (
     SELECT
-        u.*,
+        b.*,
         CASE 
-            WHEN b.bizum_name IS NOT NULL THEN 'Bizum: ' || b.bizum_name
-            ELSE u.description 
-        END                                AS clean_description,
-        b.bizum_name                       AS bizum_entity
-    FROM base_unioned u
-    LEFT JOIN {{ source('stg', 'master_bizum') }} b
-        ON u.transaction_nature = 'BIZUM'
-       AND u.description ILIKE '%' || b.keyword || '%'
+            WHEN b.transaction_nature = 'BIZUM' AND mb.bizum_name IS NOT NULL 
+                THEN 'Bizum: ' || mb.bizum_name
+            ELSE b.description 
+        END AS clean_description,
+        mb.bizum_name AS bizum_person
+    FROM base_unioned b
+    LEFT JOIN {{ source('stg', 'master_bizum') }} mb
+        ON b.transaction_nature = 'BIZUM'
+       AND b.description ILIKE '%' || mb.keyword || '%'
 ),
 
--- 2. Detección automática por reglas de palabra clave
-best_keyword_match AS (
-    SELECT DISTINCT ON (t.source_hash)
-        t.*,
-        r.category_id                             AS detected_category_id,
-        COALESCE(t.bizum_entity, r.merchant_name) AS detected_merchant
-    FROM bizum_normalized t
+-- 2. Motor de reglas: asignación determinista de categoría y merchant
+rules_matched AS (
+    SELECT DISTINCT ON (b.source_hash)
+        b.*,
+        r.category_id   AS matched_category_id,
+        r.merchant_name AS matched_merchant_name
+    FROM bizum_normalized b
     LEFT JOIN {{ source('stg', 'rules_mapping') }} r
-        ON t.description ILIKE '%' || r.keyword || '%'
-        OR t.clean_description ILIKE '%' || r.keyword || '%'
+        ON b.description ILIKE '%' || r.keyword || '%'
+        OR b.clean_description ILIKE '%' || r.keyword || '%'
     ORDER BY 
-        t.source_hash, 
+        b.source_hash, 
         r.priority DESC NULLS LAST, 
         LENGTH(r.keyword) DESC NULLS LAST
 ),
 
--- 3. Aplicación de ajustes manuales (overrides)
+-- 3. Incorporación de Overrides manuales (master_adjustments)
 adjustments_applied AS (
     SELECT
-        m.*,
+        r.*,
+        adj.category_id_override,
+        adj.merchant_override,
         adj.adjustment_type,
         adj.adjustment_amount,
         adj.reason AS adjustment_reason,
 
-        -- Prevalencia de categoría: Override manual > Detección por regla
-        COALESCE(adj.category_id_override, m.detected_category_id) AS resolved_category_id,
+        -- Resolución final de category_id
+        COALESCE(
+            adj.category_id_override,
+            r.matched_category_id,
+            CASE
+                WHEN r.transaction_nature = 'SALARY'               THEN 'ING_NOMINA'
+                WHEN r.transaction_nature = 'MORTGAGE_PAYMENT'     THEN 'FIX_HIPOTECA'
+                WHEN r.transaction_nature = 'CARD_SETTLEMENT'      THEN 'MOV_LIQ_TARJETA'
+                WHEN r.transaction_nature = 'INTERNAL_TRANSFER'    THEN 'MOV_TRASPASO'
+                WHEN r.transaction_nature = 'PARTNER_CONTRIBUTION' THEN 'MOV_FONDEO_COMUN'
+                WHEN r.transaction_nature = 'LOAN_DISBURSEMENT'    THEN 'CPX_DISPOSICION'
+                WHEN r.transaction_nature = 'EXPENSE_REFUND'       THEN 'VAR_DEVOLUCION'
+                WHEN r.transaction_nature = 'REWARD'               THEN 'ING_RENDIMIENTOS'
+                WHEN r.amount > 0                                  THEN 'ING_TRANSFERENCIAS'
+                ELSE 'VAR_OTROS'
+            END
+        ) AS final_category_id,
 
-        -- Prevalencia de comercio: Override manual > Comercio detectado > No Identificado
-        COALESCE(adj.merchant_override, m.detected_merchant, 'No Identificado') AS merchant_name
+        -- Resolución final del comercio o persona
+        COALESCE(
+            adj.merchant_override,
+            r.matched_merchant_name,
+            r.bizum_person,
+            CASE 
+                WHEN r.account_type = 'card' AND r.description LIKE '%,%' 
+                THEN TRIM(SPLIT_PART(r.description, ',', 1))
+            END,
+            CASE 
+                WHEN r.description ~* '^(RECIBO|RECIB)\s*\/?' 
+                THEN TRIM(REGEXP_REPLACE(r.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i'))
+            END,
+            'No Identificado'
+        ) AS final_merchant_name
 
-    FROM best_keyword_match m
-    -- Ajusta el nombre de la tabla según tengas master_adjustments o master_djustments
+    FROM rules_matched r
     LEFT JOIN {{ source('stg', 'master_adjustments') }} adj
-        ON m.source_hash = adj.source_hash
+        ON r.source_hash = adj.source_hash
 ),
 
--- 4. Cálculo de importes personales y cruce dimensional con dim_categories
-final_intermediate AS (
+-- 4. Cruce con taxonomía oficial dim_categories
+dimensional_enrichment AS (
     SELECT
-        a.value_date,
-        a.booking_date,
-        a.description AS raw_description,
-        a.clean_description,
-        a.amount,
-        a.balance,
+        a.*,
+        cat.group_name,
+        cat.category_name,
+        cat.subcategory_name,
+        COALESCE(cat.is_pnl, a.is_pnl) AS resolved_is_pnl,
+        COALESCE(cat.movement_type, a.movement_type) AS resolved_movement_type
+    FROM adjustments_applied a
+    LEFT JOIN {{ source('stg', 'dim_categories') }} cat
+        ON a.final_category_id = cat.category_id
+),
 
-        -- A. LÓGICA DE REPARTO PERSONAL
+-- 5. Lógica de negocio contable: personal_amount e is_shared
+final_calculations AS (
+    SELECT
+        -- Fechas
+        value_date,
+        booking_date,
+
+        -- Métricas e importes
+        amount,
+
+        -- Cálculo de personal_amount con soporte a compensaciones de pareja
         CASE
-            -- Caso 1: Gasto 100% de la pareja -> Tu coste es 0 €
-            WHEN a.adjustment_type = 'PARTNER_EXPENSE' THEN 0.00
+            -- A. Overrides manuales
+            WHEN adjustment_type = 'PARTNER_EXPENSE' THEN 0.00
+            WHEN adjustment_type = 'MY_EXPENSE'      THEN amount
+            WHEN adjustment_type = 'PARTIAL_EXPENSE' 
+                THEN -ROUND((ABS(amount) - ABS(COALESCE(adjustment_amount, 0))) * 0.5, 2)
 
-            -- Caso 2: Gasto 100% tuyo asumido en cuenta común -> Tu coste es el 100%
-            WHEN a.adjustment_type = 'MY_EXPENSE' THEN a.amount
+            -- B. Según titularidad de la cuenta
+            WHEN account_ownership = 'personal' THEN amount
+            WHEN account_ownership = 'common' AND resolved_movement_type = 'EXPENSE'
+                THEN ROUND(amount * 0.5, 2)
+            WHEN account_ownership = 'common' AND resolved_movement_type = 'INCOME'
+                THEN ROUND(amount * 0.5, 2)
 
-            -- Caso 3: Gasto mixto -> (Total - Parte exclusiva pareja) / 2
-            WHEN a.adjustment_type = 'PARTIAL_EXPENSE' AND a.adjustment_amount IS NOT NULL THEN
-                ROUND(
-                    (ABS(a.amount) - ABS(a.adjustment_amount)) * 0.5 * (CASE WHEN a.amount < 0 THEN -1 ELSE 1 END),
-                    2
-                )
-
-            -- Default: Importe personal calculado en la capa staging/intermediate base
-            ELSE a.personal_amount
+            -- C. Movimientos neutros / tesorería
+            ELSE 0.00
         END AS personal_amount,
 
-        -- B. FLAG DE GASTO COMPARTIDO (is_shared)
+        balance,
+
+        -- Flags contables de control
+        resolved_is_pnl AS is_pnl,
+
+        -- Flag estricto de gasto compartido
         CASE
-            -- 1. Si NO es P&L o es una transferencia/fondeo, NUNCA es compartido
-            WHEN NOT COALESCE(cat.is_pnl, a.is_pnl) THEN FALSE
-            WHEN COALESCE(cat.movement_type, a.movement_type) = 'TRANSFER' THEN FALSE
-
-            -- 2. Overrides manuales de exclusividad
-            WHEN a.adjustment_type IN ('PARTNER_EXPENSE', 'MY_EXPENSE') THEN FALSE
-
-            -- 3. Compras mixtas o gastos ordinarios en cuenta común
-            WHEN a.adjustment_type = 'PARTIAL_EXPENSE' THEN TRUE
-            WHEN a.account_ownership = 'common' THEN TRUE
-
-            -- 4. Resto (cuentas individuales, tarjetas personales)
+            WHEN NOT resolved_is_pnl THEN FALSE
+            WHEN resolved_movement_type = 'TRANSFER' THEN FALSE
+            WHEN adjustment_type IN ('PARTNER_EXPENSE', 'MY_EXPENSE') THEN FALSE
+            WHEN adjustment_type = 'PARTIAL_EXPENSE' THEN TRUE
+            WHEN account_ownership = 'common' THEN TRUE
             ELSE FALSE
         END AS is_shared,
 
-        -- C. METADATOS CONTABLES
-        a.transaction_nature,
-        COALESCE(cat.movement_type, a.movement_type) AS movement_type,
-        COALESCE(cat.is_pnl, a.is_pnl)               AS is_pnl,
+        resolved_movement_type AS movement_type,
+        transaction_nature,
 
-        -- D. TAXONOMÍA OFICIAL
-        cat.category_id,
-        COALESCE(cat.group_name, 
-            CASE 
-                WHEN NOT COALESCE(cat.is_pnl, a.is_pnl) THEN 'Movimientos Operativos'
-                WHEN a.amount > 0 THEN 'Ingresos'
-                ELSE 'Gastos Variables'
-            END
-        ) AS group_name,
+        -- Taxonomía dimensional
+        final_category_id AS category_id,
+        group_name,
+        category_name,
+        subcategory_name,
 
-        COALESCE(cat.category_name, '-')       AS category_name,
-        COALESCE(cat.subcategory_name, '-')  AS subcategory_name,
+        -- Entidad y descripciones
+        final_merchant_name AS merchant_name,
+        clean_description,
+        description AS raw_description,
 
-        -- E. ATRIBUTOS DE COMERCIO Y CUENTA
-        a.merchant_name,
-        a.account_id,
-        a.bank,
-        a.account_type,
-        a.account_ownership,
-        a.source_hash,
-        a.source_row_id,
-        a.adjustment_type,
-        a.adjustment_reason,
-        a.loaded_at
+        -- Contexto de cuenta
+        account_id,
+        bank,
+        account_type,
+        account_ownership,
 
-    FROM adjustments_applied a
-    LEFT JOIN {{ source('stg', 'dim_categories') }} cat
-        ON a.resolved_category_id = cat.category_id
+        -- Auditoría y ajustes (al final)
+        adjustment_type,
+        adjustment_amount,
+        adjustment_reason,
+        loaded_at,
+        source_row_id,
+        source_hash
+
+    FROM dimensional_enrichment
 )
 
-SELECT * FROM final_intermediate
+SELECT * FROM final_calculations
