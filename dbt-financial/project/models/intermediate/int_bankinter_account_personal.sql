@@ -21,22 +21,25 @@ classified_nature AS (
     SELECT
         *,
         CASE
-            -- 1. Liquidación mensual de tarjeta de la cuenta personal
+            -- 1. Liquidación mensual de tarjeta
             WHEN description ~* 'RECIBO PLATINUM' 
                 THEN 'CARD_SETTLEMENT'
-            -- 2. Traspasos internos
-            WHEN description ~* 'CUENTA T[UÚ] Y YO|RECARGA REVOLUT|TRASPASO INTERNO|PABLO RODRIGUEZ' 
-                THEN 'INTERNAL_TRANSFER'
-            -- 3. Ingresos salariales y prestaciones
-            WHEN description ~* 'TRANSF NOMI|PRESTACIONES SEGURIDAD SOCIAL' 
-                THEN 'SALARY'
-            -- 4. Pagos/Cobros por Bizum
+            -- 2. Pagos/Cobros por Bizum (evaluar antes de nombres personales)
             WHEN description ~* 'BIZUM' 
                 THEN 'BIZUM'
-            -- 5. Reembolsos comerciales estrictos (patrón delimitado + importe positivo)
+            -- 3. Retiradas de efectivo en ventanilla o cajero (prioridad sobre nombres propios)
+            WHEN description ~* '^(CAJA\s+[0-9]+|CAJERO|TRANSF\s+A\s+CAJERO)' 
+                THEN 'REGULAR'
+            -- 4. Traspasos internos propios
+            WHEN description ~* 'CUENTA T[UÚ] Y YO|RECARGA REVOLUT|TRASPASO INTERNO|PABLO RODRIGUEZ' 
+                THEN 'INTERNAL_TRANSFER'
+            -- 5. Ingresos salariales y prestaciones
+            WHEN description ~* 'TRANSF NOMI|PRESTACIONES SEGURIDAD SOCIAL' 
+                THEN 'SALARY'
+            -- 6. Reembolsos comerciales estrictos (patrón delimitado + importe positivo)
             WHEN description ~* '\yANUL' AND amount > 0 
                 THEN 'EXPENSE_REFUND'
-            -- 6. Recibos y transacciones ordinarias
+            -- 7. Recibos y transacciones ordinarias
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
