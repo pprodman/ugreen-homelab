@@ -2,27 +2,6 @@ WITH base_unioned AS (
     SELECT * FROM {{ ref('int_transactions_unioned') }}
 ),
 
--- 0. Preparar rules_mapping: Si en la hoja no tienes category_id, se obtiene de dim_categories
-rules_enriched AS (
-    SELECT 
-        r.keyword,
-        r.priority,
-        COALESCE(r.category_id, cat.category_id) AS category_id,
-        NULLIF(TRIM(r.merchant_name), '') AS merchant_name
-    FROM {{ source('stg', 'rules_mapping') }} r
-    LEFT JOIN {{ source('stg', 'dim_categories') }} cat
-        ON (
-            -- Cruce por ID si existiera
-            r.category_id = cat.category_id
-            OR (
-                -- O cruce por jerarquía de nombres
-                LOWER(TRIM(COALESCE(cat.category_group, cat.group_name))) = LOWER(TRIM(r.group_name))
-                AND LOWER(TRIM(cat.category_name)) = LOWER(TRIM(r.category_name))
-                AND LOWER(TRIM(cat.subcategory_name)) = LOWER(TRIM(r.subcategory_name))
-            )
-        )
-),
-
 -- 1. Normalización y cruce con Personas (master_participants)
 persons_matched AS (
     SELECT DISTINCT ON (b.source_hash)
@@ -37,14 +16,14 @@ persons_matched AS (
         LENGTH(mp.keyword) DESC NULLS LAST
 ),
 
--- 2. Motor de Reglas comerciales (rules_mapping)
+-- 2. Motor de Reglas comerciales (rules_mapping directo)
 rules_matched AS (
     SELECT DISTINCT ON (b.source_hash)
         b.*,
         r.category_id AS matched_category_id,
-        r.merchant_name AS matched_merchant_name
+        NULLIF(TRIM(r.merchant_name), '') AS matched_merchant_name
     FROM persons_matched b
-    LEFT JOIN rules_enriched r
+    LEFT JOIN {{ source('stg', 'rules_mapping') }} r
         ON REGEXP_REPLACE(TRANSLATE(COALESCE(b.raw_description, b.description), 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g')
            ILIKE '%' || REGEXP_REPLACE(TRANSLATE(r.keyword, 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g') || '%'
     ORDER BY 
@@ -106,10 +85,10 @@ adjustments_applied AS (
             -- 2. Comercio definido en rules_mapping (ej: Mercadona, Endesa)
             NULLIF(TRIM(r.matched_merchant_name), ''),
 
-            -- 3. Persona identificada en master_participants (Bizums y Transferencias conocidos)
+            -- 3. Persona de master_participants (aquí entran los Bizums y Transferencias)
             NULLIF(TRIM(r.person_name), ''),
 
-            -- 4. Auto-curación de Bizum si no estaba en participants
+            -- 4. Auto-curación de Bizum si la persona no estaba en master_participants
             CASE 
                 WHEN COALESCE(r.raw_description, r.description) ~* 'BIZUM' 
                 THEN INITCAP(TRIM(
@@ -123,7 +102,7 @@ adjustments_applied AS (
                 ))
             END,
 
-            -- 5. Auto-curación de Transferencias si no estaba en participants
+            -- 5. Auto-curación de Transferencias si la persona no estaba en master_participants
             CASE 
                 WHEN COALESCE(r.raw_description, r.description) ~* '^(TRA\s*NS|TRANSF|TRANSFERENCIA)' 
                 THEN INITCAP(TRIM(
@@ -166,7 +145,7 @@ adjustments_applied AS (
 dimensional_enrichment AS (
     SELECT
         a.*,
-        COALESCE(cat.category_group, cat.group_name) AS group_name,
+        cat.group_name,
         cat.category_name,
         cat.subcategory_name,
         COALESCE(cat.is_pnl, a.is_pnl) AS resolved_is_pnl,
@@ -233,4 +212,4 @@ final_calculations AS (
     FROM dimensional_enrichment
 )
 
-SELECT * FROM final_calculations;
+SELECT * FROM final_calculations
