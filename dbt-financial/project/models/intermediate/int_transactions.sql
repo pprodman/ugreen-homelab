@@ -2,15 +2,36 @@ WITH base_unioned AS (
     SELECT * FROM {{ ref('int_transactions_unioned') }}
 ),
 
--- 1. Normalización de Personas (inmune a signos ';', '#$', '/' y tildes)
+-- 0. Preparar rules_mapping: Si en la hoja no tienes category_id, se obtiene de dim_categories
+rules_enriched AS (
+    SELECT 
+        r.keyword,
+        r.priority,
+        COALESCE(r.category_id, cat.category_id) AS category_id,
+        NULLIF(TRIM(r.merchant_name), '') AS merchant_name
+    FROM {{ source('stg', 'rules_mapping') }} r
+    LEFT JOIN {{ source('stg', 'dim_categories') }} cat
+        ON (
+            -- Cruce por ID si existiera
+            r.category_id = cat.category_id
+            OR (
+                -- O cruce por jerarquía de nombres
+                LOWER(TRIM(COALESCE(cat.category_group, cat.group_name))) = LOWER(TRIM(r.group_name))
+                AND LOWER(TRIM(cat.category_name)) = LOWER(TRIM(r.category_name))
+                AND LOWER(TRIM(cat.subcategory_name)) = LOWER(TRIM(r.subcategory_name))
+            )
+        )
+),
+
+-- 1. Normalización y cruce con Personas (master_participants)
 persons_matched AS (
     SELECT DISTINCT ON (b.source_hash)
         b.*,
         mp.person_name
     FROM base_unioned b
     LEFT JOIN {{ source('stg', 'master_participants') }} mp
-        ON TRANSLATE(REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
-           ILIKE '%' || TRANSLATE(REGEXP_REPLACE(mp.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
+        ON REGEXP_REPLACE(TRANSLATE(COALESCE(b.raw_description, b.description), 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g')
+           ILIKE '%' || REGEXP_REPLACE(TRANSLATE(mp.keyword, 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g') || '%'
     ORDER BY 
         b.source_hash, 
         LENGTH(mp.keyword) DESC NULLS LAST
@@ -20,19 +41,19 @@ persons_matched AS (
 rules_matched AS (
     SELECT DISTINCT ON (b.source_hash)
         b.*,
-        r.category_id   AS matched_category_id,
-        NULLIF(TRIM(r.merchant_name), '') AS matched_merchant_name
+        r.category_id AS matched_category_id,
+        r.merchant_name AS matched_merchant_name
     FROM persons_matched b
-    LEFT JOIN {{ source('stg', 'rules_mapping') }} r
-        ON TRANSLATE(REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
-           ILIKE '%' || TRANSLATE(REGEXP_REPLACE(r.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
+    LEFT JOIN rules_enriched r
+        ON REGEXP_REPLACE(TRANSLATE(COALESCE(b.raw_description, b.description), 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g')
+           ILIKE '%' || REGEXP_REPLACE(TRANSLATE(r.keyword, 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g') || '%'
     ORDER BY 
         b.source_hash, 
         r.priority DESC NULLS LAST, 
         LENGTH(r.keyword) DESC NULLS LAST
 ),
 
--- 3. Overrides manuales y resolución en 2 capas de comercio y categoría
+-- 3. Overrides manuales y resolución en capas de categoría y comercio
 adjustments_applied AS (
     SELECT
         r.*,
@@ -42,20 +63,20 @@ adjustments_applied AS (
         adj.adjustment_amount,
         adj.reason AS adjustment_reason,
 
-        -- A. RESOLUCIÓN DE CATEGORÍA SEGÚN SIGNO Y CANAL
+        -- A. RESOLUCIÓN DE CATEGORÍA
         COALESCE(
             adj.category_id_override,
             r.matched_category_id,
             CASE
                 -- Caso Pareja (Lledó)
                 WHEN r.person_name ILIKE '%Lledo%' AND r.amount < 0 AND r.account_ownership = 'personal'
-                    THEN 'PAREJA_COMPENSA'
+                    THEN 'VAR_OTROS'
                 WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0 AND r.account_ownership = 'common'
-                    THEN 'MOV_FONDEO_COMUN'
+                    THEN 'ING_TRANSFERENCIAS'
                 WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0
                     THEN 'ING_BIZUM'
 
-                -- Personas / Bizum según signo
+                -- Personas / Bizum / Transferencias según signo
                 WHEN (r.person_name IS NOT NULL OR r.transaction_nature = 'BIZUM') AND r.amount > 0
                     THEN CASE WHEN r.transaction_nature = 'BIZUM' THEN 'ING_BIZUM' ELSE 'ING_TRANSFERENCIAS' END
                 WHEN (r.person_name IS NOT NULL OR r.transaction_nature = 'BIZUM') AND r.amount < 0
@@ -66,9 +87,9 @@ adjustments_applied AS (
                 WHEN r.transaction_nature = 'MORTGAGE_PAYMENT'     THEN 'FIX_HIPOTECA'
                 WHEN r.transaction_nature = 'CARD_SETTLEMENT'      THEN 'MOV_LIQ_TARJETA'
                 WHEN r.transaction_nature = 'INTERNAL_TRANSFER'    THEN 'MOV_TRASPASO'
-                WHEN r.transaction_nature = 'PARTNER_CONTRIBUTION' THEN 'MOV_FONDEO_COMUN'
+                WHEN r.transaction_nature = 'PARTNER_CONTRIBUTION' THEN 'ING_TRANSFERENCIAS'
                 WHEN r.transaction_nature = 'LOAN_DISBURSEMENT'    THEN 'CPX_DISPOSICION'
-                WHEN r.transaction_nature = 'EXPENSE_REFUND'       THEN 'VAR_DEVOLUCION'
+                WHEN r.transaction_nature = 'EXPENSE_REFUND'       THEN 'VAR_COM_ONLINE'
                 WHEN r.transaction_nature = 'REWARD'               THEN 'ING_RENDIMIENTOS'
 
                 -- Fallback general por signo
@@ -77,25 +98,24 @@ adjustments_applied AS (
             END
         ) AS final_category_id,
 
-        -- B. RESOLUCIÓN DE MERCHANT_NAME EN 2 CAPAS (Nunca más '-')
+        -- B. RESOLUCIÓN DE MERCHANT_NAME EN 5 CAPAS
         COALESCE(
             -- 1. Override manual en master_adjustments
             NULLIF(TRIM(adj.merchant_override), ''),
 
-            -- 2. Comercio de rules_mapping (si en rules_mapping lo dejaste vacío, pasa de largo)
+            -- 2. Comercio definido en rules_mapping (ej: Mercadona, Endesa)
             NULLIF(TRIM(r.matched_merchant_name), ''),
 
-            -- 3. CAPA 1: Nombre oficial desde la hoja participants
+            -- 3. Persona identificada en master_participants (Bizums y Transferencias conocidos)
             NULLIF(TRIM(r.person_name), ''),
 
-            -- 4. CAPA 2 (AUTOCURACIÓN BIZUM): Extrae el nombre si no estaba en participants
-            -- Limpia: 'PAGO BIZUM A ALBERTO;PASCUAL;Z' -> 'Alberto Pascual Z'
+            -- 4. Auto-curación de Bizum si no estaba en participants
             CASE 
-                WHEN r.description ~* 'BIZUM' 
+                WHEN COALESCE(r.raw_description, r.description) ~* 'BIZUM' 
                 THEN INITCAP(TRIM(
                     REGEXP_REPLACE(
                         REGEXP_REPLACE(
-                            REGEXP_REPLACE(r.description, '^(DEV\s+)?(PAGO\s+)?BIZUM\s+(A|DE|PARA)\s+', '', 'i'),
+                            REGEXP_REPLACE(COALESCE(r.raw_description, r.description), '^(DEV\s+)?(PAGO\s+)?BIZUM\s+(A|DE|PARA)\s+', '', 'i'),
                             '[;#$_/\\-]+', ' ', 'g'
                         ),
                         '\s+', ' ', 'g'
@@ -103,15 +123,14 @@ adjustments_applied AS (
                 ))
             END,
 
-            -- 5. CAPA 2 (AUTOCURACIÓN TRANSFERENCIAS): Extrae beneficiario/emisor
-            -- Limpia: 'TRANSF INTERNA /NURIA AGUT' -> 'Nuria Agut', 'TRANSF OTR /DAVID...' -> 'David...'
+            -- 5. Auto-curación de Transferencias si no estaba en participants
             CASE 
-                WHEN r.description ~* '^(TRA\s*NS|TRANSF|TRANSFERENCIA)' 
+                WHEN COALESCE(r.raw_description, r.description) ~* '^(TRA\s*NS|TRANSF|TRANSFERENCIA)' 
                 THEN INITCAP(TRIM(
                     REGEXP_REPLACE(
                         REGEXP_REPLACE(
                             REGEXP_REPLACE(
-                                r.description, 
+                                COALESCE(r.raw_description, r.description), 
                                 '^(TRA\s*NS\s*F?|TRANSF?)\s*(INTERNA|OTR[AS]*\s+ENTID|OTR[AS]*|I|NOMI[A-Z]*|\/)?\s*(\/|\:)?\s*|^(TRANSFERENCIA\s+(DE|A|FAVOR DE))\s*', 
                                 '', 
                                 'i'
@@ -125,14 +144,14 @@ adjustments_applied AS (
 
             -- 6. Datáfonos de tarjetas (texto antes de la coma)
             CASE 
-                WHEN r.account_type = 'card' AND r.description LIKE '%,%' 
-                THEN TRIM(SPLIT_PART(r.description, ',', 1)) 
+                WHEN r.account_type = 'card' AND COALESCE(r.raw_description, r.description) LIKE '%,%' 
+                THEN TRIM(SPLIT_PART(COALESCE(r.raw_description, r.description), ',', 1)) 
             END,
 
             -- 7. Recibos bancarios
             CASE 
-                WHEN r.description ~* '^(RECIBO|RECIB)\s*\/?' 
-                THEN TRIM(REGEXP_REPLACE(r.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
+                WHEN COALESCE(r.raw_description, r.description) ~* '^(RECIBO|RECIB)\s*\/?' 
+                THEN TRIM(REGEXP_REPLACE(COALESCE(r.raw_description, r.description), '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
             END,
 
             '-'
@@ -147,7 +166,7 @@ adjustments_applied AS (
 dimensional_enrichment AS (
     SELECT
         a.*,
-        cat.group_name,
+        COALESCE(cat.category_group, cat.group_name) AS group_name,
         cat.category_name,
         cat.subcategory_name,
         COALESCE(cat.is_pnl, a.is_pnl) AS resolved_is_pnl,
@@ -157,7 +176,7 @@ dimensional_enrichment AS (
         ON a.final_category_id = cat.category_id
 ),
 
--- 5. Cálculos finales y orden definitivo
+-- 5. Cálculos finales y estructura de salida
 final_calculations AS (
     SELECT
         value_date,
@@ -196,7 +215,7 @@ final_calculations AS (
         subcategory_name,
 
         final_merchant_name AS merchant_name,
-        description AS raw_description,
+        COALESCE(raw_description, description) AS raw_description,
 
         account_id,
         bank,
@@ -214,4 +233,4 @@ final_calculations AS (
     FROM dimensional_enrichment
 )
 
-SELECT * FROM final_calculations
+SELECT * FROM final_calculations;
