@@ -13,10 +13,14 @@ persons_matched AS (
         b.*,
         mp.person_name,
         CASE 
-            WHEN mp.person_name IS NOT NULL AND b.transaction_nature = 'BIZUM'
-                THEN 'Bizum: ' || mp.person_name
-            WHEN mp.person_name IS NOT NULL AND b.description ~* '(TRANS|TRANSFERENCIA)'
-                THEN 'Transf: ' || mp.person_name
+            WHEN mp.person_name IS NOT NULL AND b.transaction_nature = 'BIZUM' AND b.amount > 0
+                THEN 'Bizum de: ' || mp.person_name
+            WHEN mp.person_name IS NOT NULL AND b.transaction_nature = 'BIZUM' AND b.amount < 0
+                THEN 'Bizum a: ' || mp.person_name
+            WHEN mp.person_name IS NOT NULL AND b.description ~* '(TRANS|TRANSFERENCIA)' AND b.amount > 0
+                THEN 'Transf de: ' || mp.person_name
+            WHEN mp.person_name IS NOT NULL AND b.description ~* '(TRANS|TRANSFERENCIA)' AND b.amount < 0
+                THEN 'Transf a: ' || mp.person_name
             ELSE b.description 
         END AS clean_description
     FROM base_unioned b
@@ -92,25 +96,41 @@ adjustments_applied AS (
         ) AS final_category_id,
 
         -- B. RESOLUCIÓN DE COMERCIO / BENEFICIARIO
+        -- Resolución del comercio o persona
         COALESCE(
-            adj.merchant_override,
-            r.matched_merchant_name,
-            r.person_name,
-            -- Datáfonos de tarjetas (antes de la coma)
+            -- 1. Override manual en master_adjustments
+            NULLIF(TRIM(adj.merchant_override), ''),
+
+            -- 2. Comercio de rules_mapping (si está vacío, pasa al siguiente)
+            NULLIF(TRIM(r.matched_merchant_name), ''),
+
+            -- 3. Persona identificada en participants (Bizums y Transferencias)
+            NULLIF(TRIM(r.person_name), ''),
+
+            -- 4. Datáfonos de tarjetas (texto antes de la coma)
             CASE 
                 WHEN r.account_type = 'card' AND r.description LIKE '%,%' 
                 THEN TRIM(SPLIT_PART(r.description, ',', 1)) 
             END,
-            -- Recibos domiciliados
+
+            -- 5. Extracción sintáctica de recibos bancarios
             CASE 
                 WHEN r.description ~* '^(RECIBO|RECIB)\s*\/?' 
                 THEN TRIM(REGEXP_REPLACE(r.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
             END,
-            -- Extracto sintáctico de transferencias Bankinter
+
+            -- 6. Extracción sintáctica de transferencias (si no está en participants)
             CASE 
                 WHEN r.description ~* '^(TRANSF\s+OTR\s*\/?|TRANSF\s+I\s*\/?|TRANS\s*\/?|TRANSFERENCIA\s+DE\s+|TRANSFERENCIA\s+A\s+)' 
                 THEN TRIM(REGEXP_REPLACE(r.description, '^(TRANSF\s+OTR\s*\/?|TRANSF\s+I\s*\/?|TRANS\s*\/?|TRANSFERENCIA\s+DE\s+|TRANSFERENCIA\s+A\s+)\s*', '', 'i')) 
             END,
+
+            -- 7. Extracción sintáctica de Bizums a particulares no fichados
+            CASE 
+                WHEN r.description ~* '^(DEV\s+)?PAGO\s+BIZUM\s+(A|DE)\s+' 
+                THEN TRIM(REGEXP_REPLACE(REGEXP_REPLACE(r.description, '^(DEV\s+)?PAGO\s+BIZUM\s+(A|DE)\s+', '', 'i'), '[^a-zA-Z0-9]+', ' ', 'g')) 
+            END,
+
             '-'
         ) AS final_merchant_name
 
