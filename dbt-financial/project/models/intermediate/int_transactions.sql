@@ -1,56 +1,39 @@
-{{ config(
-    materialized = 'view',
-    tags = ['intermediate', 'financial_core']
-) }}
-
 WITH base_unioned AS (
     SELECT * FROM {{ ref('int_transactions_unioned') }}
 ),
 
--- 1. Normalización de Personas (Insensible a ';', '#$', '/' y espacios)
+-- 1. Normalización de Personas (inmune a signos ';', '#$', '/' y tildes)
 persons_matched AS (
     SELECT DISTINCT ON (b.source_hash)
         b.*,
-        mp.person_name,
-        CASE 
-            WHEN mp.person_name IS NOT NULL AND b.transaction_nature = 'BIZUM' AND b.amount > 0
-                THEN 'Bizum de: ' || mp.person_name
-            WHEN mp.person_name IS NOT NULL AND b.transaction_nature = 'BIZUM' AND b.amount < 0
-                THEN 'Bizum a: ' || mp.person_name
-            WHEN mp.person_name IS NOT NULL AND b.description ~* '(TRANS|TRANSFERENCIA)' AND b.amount > 0
-                THEN 'Transf de: ' || mp.person_name
-            WHEN mp.person_name IS NOT NULL AND b.description ~* '(TRANS|TRANSFERENCIA)' AND b.amount < 0
-                THEN 'Transf a: ' || mp.person_name
-            ELSE b.description 
-        END AS clean_description
+        -- Alias seguro de la columna de nombre (adapta mp.person_name si en tu DB es bizum_name)
+        COALESCE(mp.person_name, mp.bizum_name) AS person_name
     FROM base_unioned b
-    LEFT JOIN {{ source('stg', 'master_participants') }} mp
-        ON REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g') 
-           ILIKE '%' || REGEXP_REPLACE(mp.keyword, '[^a-zA-Z0-9]+', ' ', 'g') || '%'
+    LEFT JOIN {{ source('stg', 'participants') }} mp
+        ON TRANSLATE(REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
+           ILIKE '%' || TRANSLATE(REGEXP_REPLACE(mp.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
     ORDER BY 
         b.source_hash, 
         LENGTH(mp.keyword) DESC NULLS LAST
 ),
 
--- 2. Motor de Reglas (rules_mapping con normalización de caracteres)
+-- 2. Motor de Reglas comerciales (rules_mapping)
 rules_matched AS (
     SELECT DISTINCT ON (b.source_hash)
         b.*,
         r.category_id   AS matched_category_id,
-        r.merchant_name AS matched_merchant_name
+        NULLIF(TRIM(r.merchant_name), '') AS matched_merchant_name
     FROM persons_matched b
     LEFT JOIN {{ source('stg', 'rules_mapping') }} r
-        ON REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g') 
-           ILIKE '%' || REGEXP_REPLACE(r.keyword, '[^a-zA-Z0-9]+', ' ', 'g') || '%'
-        OR REGEXP_REPLACE(b.clean_description, '[^a-zA-Z0-9]+', ' ', 'g') 
-           ILIKE '%' || REGEXP_REPLACE(r.keyword, '[^a-zA-Z0-9]+', ' ', 'g') || '%'
+        ON TRANSLATE(REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
+           ILIKE '%' || TRANSLATE(REGEXP_REPLACE(r.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
     ORDER BY 
         b.source_hash, 
         r.priority DESC NULLS LAST, 
         LENGTH(r.keyword) DESC NULLS LAST
 ),
 
--- 3. Overrides manuales, resolución de comercio y lógica bidireccional de categorías
+-- 3. Overrides manuales y resolución en 2 capas de comercio y categoría
 adjustments_applied AS (
     SELECT
         r.*,
@@ -66,11 +49,11 @@ adjustments_applied AS (
             r.matched_category_id,
             CASE
                 -- Caso Pareja (Lledó)
-                WHEN r.person_name = 'Lledó Amorós' AND r.amount < 0 AND r.account_ownership = 'personal'
+                WHEN r.person_name ILIKE '%Lledo%' AND r.amount < 0 AND r.account_ownership = 'personal'
                     THEN 'PAREJA_COMPENSA'
-                WHEN r.person_name = 'Lledó Amorós' AND r.amount > 0 AND r.account_ownership = 'common'
+                WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0 AND r.account_ownership = 'common'
                     THEN 'MOV_FONDEO_COMUN'
-                WHEN r.person_name = 'Lledó Amorós' AND r.amount > 0
+                WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0
                     THEN 'ING_BIZUM'
 
                 -- Personas / Bizum según signo
@@ -89,46 +72,68 @@ adjustments_applied AS (
                 WHEN r.transaction_nature = 'EXPENSE_REFUND'       THEN 'VAR_DEVOLUCION'
                 WHEN r.transaction_nature = 'REWARD'               THEN 'ING_RENDIMIENTOS'
 
-                -- Fallback por signo
+                -- Fallback general por signo
                 WHEN r.amount > 0 THEN 'ING_TRANSFERENCIAS'
                 ELSE 'VAR_OTROS'
             END
         ) AS final_category_id,
 
-        -- B. RESOLUCIÓN DE COMERCIO / BENEFICIARIO
-        -- Resolución del comercio o persona
+        -- B. RESOLUCIÓN DE MERCHANT_NAME EN 2 CAPAS (Nunca más '-')
         COALESCE(
             -- 1. Override manual en master_adjustments
             NULLIF(TRIM(adj.merchant_override), ''),
 
-            -- 2. Comercio de rules_mapping (si está vacío, pasa al siguiente)
+            -- 2. Comercio de rules_mapping (si en rules_mapping lo dejaste vacío, pasa de largo)
             NULLIF(TRIM(r.matched_merchant_name), ''),
 
-            -- 3. Persona identificada en participants (Bizums y Transferencias)
+            -- 3. CAPA 1: Nombre oficial desde la hoja participants
             NULLIF(TRIM(r.person_name), ''),
 
-            -- 4. Datáfonos de tarjetas (texto antes de la coma)
+            -- 4. CAPA 2 (AUTOCURACIÓN BIZUM): Extrae el nombre si no estaba en participants
+            -- Limpia: 'PAGO BIZUM A ALBERTO;PASCUAL;Z' -> 'Alberto Pascual Z'
+            CASE 
+                WHEN r.description ~* 'BIZUM' 
+                THEN INITCAP(TRIM(
+                    REGEXP_REPLACE(
+                        REGEXP_REPLACE(
+                            REGEXP_REPLACE(r.description, '^(DEV\s+)?(PAGO\s+)?BIZUM\s+(A|DE|PARA)\s+', '', 'i'),
+                            '[;#$_/\\-]+', ' ', 'g'
+                        ),
+                        '\s+', ' ', 'g'
+                    )
+                ))
+            END,
+
+            -- 5. CAPA 2 (AUTOCURACIÓN TRANSFERENCIAS): Extrae beneficiario/emisor
+            -- Limpia: 'TRANSF INTERNA /NURIA AGUT' -> 'Nuria Agut', 'TRANSF OTR /DAVID...' -> 'David...'
+            CASE 
+                WHEN r.description ~* '^(TRA\s*NS|TRANSF|TRANSFERENCIA)' 
+                THEN INITCAP(TRIM(
+                    REGEXP_REPLACE(
+                        REGEXP_REPLACE(
+                            REGEXP_REPLACE(
+                                r.description, 
+                                '^(TRA\s*NS\s*F?|TRANSF?)\s*(INTERNA|OTR[AS]*\s+ENTID|OTR[AS]*|I|NOMI[A-Z]*|\/)?\s*(\/|\:)?\s*|^(TRANSFERENCIA\s+(DE|A|FAVOR DE))\s*', 
+                                '', 
+                                'i'
+                            ),
+                            '[;#$_/\\-]+', ' ', 'g'
+                        ),
+                        '\s+', ' ', 'g'
+                    )
+                ))
+            END,
+
+            -- 6. Datáfonos de tarjetas (texto antes de la coma)
             CASE 
                 WHEN r.account_type = 'card' AND r.description LIKE '%,%' 
                 THEN TRIM(SPLIT_PART(r.description, ',', 1)) 
             END,
 
-            -- 5. Extracción sintáctica de recibos bancarios
+            -- 7. Recibos bancarios
             CASE 
                 WHEN r.description ~* '^(RECIBO|RECIB)\s*\/?' 
                 THEN TRIM(REGEXP_REPLACE(r.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
-            END,
-
-            -- 6. Extracción sintáctica de transferencias (si no está en participants)
-            CASE 
-                WHEN r.description ~* '^(TRANSF\s+OTR\s*\/?|TRANSF\s+I\s*\/?|TRANS\s*\/?|TRANSFERENCIA\s+DE\s+|TRANSFERENCIA\s+A\s+)' 
-                THEN TRIM(REGEXP_REPLACE(r.description, '^(TRANSF\s+OTR\s*\/?|TRANSF\s+I\s*\/?|TRANS\s*\/?|TRANSFERENCIA\s+DE\s+|TRANSFERENCIA\s+A\s+)\s*', '', 'i')) 
-            END,
-
-            -- 7. Extracción sintáctica de Bizums a particulares no fichados
-            CASE 
-                WHEN r.description ~* '^(DEV\s+)?PAGO\s+BIZUM\s+(A|DE)\s+' 
-                THEN TRIM(REGEXP_REPLACE(REGEXP_REPLACE(r.description, '^(DEV\s+)?PAGO\s+BIZUM\s+(A|DE)\s+', '', 'i'), '[^a-zA-Z0-9]+', ' ', 'g')) 
             END,
 
             '-'
@@ -153,14 +158,11 @@ dimensional_enrichment AS (
         ON a.final_category_id = cat.category_id
 ),
 
--- 5. Cálculos finales y ordenación de columnas
+-- 5. Cálculos finales y orden definitivo
 final_calculations AS (
     SELECT
-        -- Fechas
         value_date,
         booking_date,
-
-        -- Importes
         amount,
 
         CASE
@@ -175,8 +177,6 @@ final_calculations AS (
         END AS personal_amount,
 
         balance,
-
-        -- Flags contables
         resolved_is_pnl AS is_pnl,
 
         CASE
@@ -191,29 +191,23 @@ final_calculations AS (
         resolved_movement_type AS movement_type,
         transaction_nature,
 
-        -- Taxonomía dimensional
         final_category_id AS category_id,
         group_name,
         category_name,
         subcategory_name,
 
-        -- Entidad y descripciones
         final_merchant_name AS merchant_name,
-        clean_description,
         description AS raw_description,
 
-        -- Contexto de cuenta
         account_id,
         bank,
         account_type,
         account_ownership,
 
-        -- Ajustes manuales
         adjustment_type,
         adjustment_amount,
         adjustment_reason,
 
-        -- Auditoría e identificadores técnicos al final
         loaded_at,
         source_row_id,
         source_hash
