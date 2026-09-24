@@ -9,14 +9,14 @@ persons_matched AS (
         mp.person_name
     FROM base_unioned b
     LEFT JOIN {{ source('stg', 'master_participants') }} mp
-        ON REGEXP_REPLACE(TRANSLATE(COALESCE(b.raw_description, b.description), 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g')
+        ON REGEXP_REPLACE(TRANSLATE(b.description, 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g')
            ILIKE '%' || REGEXP_REPLACE(TRANSLATE(mp.keyword, 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g') || '%'
     ORDER BY 
         b.source_hash, 
         LENGTH(mp.keyword) DESC NULLS LAST
 ),
 
--- 2. Motor de Reglas comerciales (rules_mapping directo)
+-- 2. Motor de Reglas comerciales (rules_mapping)
 rules_matched AS (
     SELECT DISTINCT ON (b.source_hash)
         b.*,
@@ -24,7 +24,7 @@ rules_matched AS (
         NULLIF(TRIM(r.merchant_name), '') AS matched_merchant_name
     FROM persons_matched b
     LEFT JOIN {{ source('stg', 'rules_mapping') }} r
-        ON REGEXP_REPLACE(TRANSLATE(COALESCE(b.raw_description, b.description), 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g')
+        ON REGEXP_REPLACE(TRANSLATE(b.description, 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g')
            ILIKE '%' || REGEXP_REPLACE(TRANSLATE(r.keyword, 'ÁÉÍÓÚáéíóúÜüÑñ', 'AEIOUaeiouUuNn'), '[^a-zA-Z0-9]+', ' ', 'g') || '%'
     ORDER BY 
         b.source_hash, 
@@ -85,16 +85,16 @@ adjustments_applied AS (
             -- 2. Comercio definido en rules_mapping (ej: Mercadona, Endesa)
             NULLIF(TRIM(r.matched_merchant_name), ''),
 
-            -- 3. Persona de master_participants (aquí entran los Bizums y Transferencias)
+            -- 3. Persona de master_participants (Bizums y Transferencias conocidos)
             NULLIF(TRIM(r.person_name), ''),
 
-            -- 4. Auto-curación de Bizum si la persona no estaba en master_participants
+            -- 4. Auto-curación de Bizum si no estaba en participants
             CASE 
-                WHEN COALESCE(r.raw_description, r.description) ~* 'BIZUM' 
+                WHEN r.description ~* 'BIZUM' 
                 THEN INITCAP(TRIM(
                     REGEXP_REPLACE(
                         REGEXP_REPLACE(
-                            REGEXP_REPLACE(COALESCE(r.raw_description, r.description), '^(DEV\s+)?(PAGO\s+)?BIZUM\s+(A|DE|PARA)\s+', '', 'i'),
+                            REGEXP_REPLACE(r.description, '^(DEV\s+)?(PAGO\s+)?BIZUM\s+(A|DE|PARA)\s+', '', 'i'),
                             '[;#$_/\\-]+', ' ', 'g'
                         ),
                         '\s+', ' ', 'g'
@@ -102,14 +102,14 @@ adjustments_applied AS (
                 ))
             END,
 
-            -- 5. Auto-curación de Transferencias si la persona no estaba en master_participants
+            -- 5. Auto-curación de Transferencias si no estaba en participants
             CASE 
-                WHEN COALESCE(r.raw_description, r.description) ~* '^(TRA\s*NS|TRANSF|TRANSFERENCIA)' 
+                WHEN r.description ~* '^(TRA\s*NS|TRANSF|TRANSFERENCIA)' 
                 THEN INITCAP(TRIM(
                     REGEXP_REPLACE(
                         REGEXP_REPLACE(
                             REGEXP_REPLACE(
-                                COALESCE(r.raw_description, r.description), 
+                                r.description, 
                                 '^(TRA\s*NS\s*F?|TRANSF?)\s*(INTERNA|OTR[AS]*\s+ENTID|OTR[AS]*|I|NOMI[A-Z]*|\/)?\s*(\/|\:)?\s*|^(TRANSFERENCIA\s+(DE|A|FAVOR DE))\s*', 
                                 '', 
                                 'i'
@@ -123,14 +123,14 @@ adjustments_applied AS (
 
             -- 6. Datáfonos de tarjetas (texto antes de la coma)
             CASE 
-                WHEN r.account_type = 'card' AND COALESCE(r.raw_description, r.description) LIKE '%,%' 
-                THEN TRIM(SPLIT_PART(COALESCE(r.raw_description, r.description), ',', 1)) 
+                WHEN r.account_type = 'card' AND r.description LIKE '%,%' 
+                THEN TRIM(SPLIT_PART(r.description, ',', 1)) 
             END,
 
             -- 7. Recibos bancarios
             CASE 
-                WHEN COALESCE(r.raw_description, r.description) ~* '^(RECIBO|RECIB)\s*\/?' 
-                THEN TRIM(REGEXP_REPLACE(COALESCE(r.raw_description, r.description), '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
+                WHEN r.description ~* '^(RECIBO|RECIB)\s*\/?' 
+                THEN TRIM(REGEXP_REPLACE(r.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
             END,
 
             '-'
@@ -194,7 +194,7 @@ final_calculations AS (
         subcategory_name,
 
         final_merchant_name AS merchant_name,
-        COALESCE(raw_description, description) AS raw_description,
+        description AS raw_description,
 
         account_id,
         bank,
