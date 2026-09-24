@@ -7,39 +7,46 @@ WITH base_unioned AS (
     SELECT * FROM {{ ref('int_transactions_unioned') }}
 ),
 
--- 1. Normalización de descripciones de Bizum
-bizum_normalized AS (
-    SELECT
+-- 1. Normalización de Personas (Insensible a ';', '#$', '/' y espacios)
+persons_matched AS (
+    SELECT DISTINCT ON (b.source_hash)
         b.*,
+        mp.person_name,
         CASE 
-            WHEN b.transaction_nature = 'BIZUM' AND mb.bizum_name IS NOT NULL 
-                THEN 'Bizum: ' || mb.bizum_name
+            WHEN mp.person_name IS NOT NULL AND b.transaction_nature = 'BIZUM'
+                THEN 'Bizum: ' || mp.person_name
+            WHEN mp.person_name IS NOT NULL AND b.description ~* '(TRANS|TRANSFERENCIA)'
+                THEN 'Transf: ' || mp.person_name
             ELSE b.description 
-        END AS clean_description,
-        mb.bizum_name AS bizum_person
+        END AS clean_description
     FROM base_unioned b
-    LEFT JOIN {{ source('stg', 'master_bizum') }} mb
-        ON b.transaction_nature = 'BIZUM'
-       AND b.description ILIKE '%' || mb.keyword || '%'
+    LEFT JOIN {{ source('stg', 'master_participants') }} mp
+        ON REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g') 
+           ILIKE '%' || REGEXP_REPLACE(mp.keyword, '[^a-zA-Z0-9]+', ' ', 'g') || '%'
+    ORDER BY 
+        b.source_hash, 
+        LENGTH(mp.keyword) DESC NULLS LAST
 ),
 
--- 2. Motor de reglas: asignación determinista de categoría y merchant
+-- 2. Motor de Reglas (rules_mapping con normalización de caracteres)
 rules_matched AS (
     SELECT DISTINCT ON (b.source_hash)
         b.*,
         r.category_id   AS matched_category_id,
         r.merchant_name AS matched_merchant_name
-    FROM bizum_normalized b
+    FROM persons_matched b
     LEFT JOIN {{ source('stg', 'rules_mapping') }} r
-        ON b.description ILIKE '%' || r.keyword || '%'
-        OR b.clean_description ILIKE '%' || r.keyword || '%'
+        ON REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g') 
+           ILIKE '%' || REGEXP_REPLACE(r.keyword, '[^a-zA-Z0-9]+', ' ', 'g') || '%'
+        OR REGEXP_REPLACE(b.clean_description, '[^a-zA-Z0-9]+', ' ', 'g') 
+           ILIKE '%' || REGEXP_REPLACE(r.keyword, '[^a-zA-Z0-9]+', ' ', 'g') || '%'
     ORDER BY 
         b.source_hash, 
         r.priority DESC NULLS LAST, 
         LENGTH(r.keyword) DESC NULLS LAST
 ),
 
--- 3. Incorporación de Overrides manuales (master_adjustments)
+-- 3. Overrides manuales, resolución de comercio y lógica bidireccional de categorías
 adjustments_applied AS (
     SELECT
         r.*,
@@ -49,12 +56,27 @@ adjustments_applied AS (
         adj.adjustment_amount,
         adj.reason AS adjustment_reason,
 
-        -- Resolución final de category_id
+        -- A. RESOLUCIÓN DE CATEGORÍA SEGÚN SIGNO Y CANAL
         COALESCE(
             adj.category_id_override,
             r.matched_category_id,
             CASE
-                WHEN r.transaction_nature = 'SALARY'               THEN 'ING_NOMINA'
+                -- Caso Pareja (Lledó)
+                WHEN r.person_name = 'Lledó Amorós' AND r.amount < 0 AND r.account_ownership = 'personal'
+                    THEN 'PAREJA_COMPENSA'
+                WHEN r.person_name = 'Lledó Amorós' AND r.amount > 0 AND r.account_ownership = 'common'
+                    THEN 'MOV_FONDEO_COMUN'
+                WHEN r.person_name = 'Lledó Amorós' AND r.amount > 0
+                    THEN 'ING_BIZUM'
+
+                -- Personas / Bizum según signo
+                WHEN (r.person_name IS NOT NULL OR r.transaction_nature = 'BIZUM') AND r.amount > 0
+                    THEN CASE WHEN r.transaction_nature = 'BIZUM' THEN 'ING_BIZUM' ELSE 'ING_TRANSFERENCIAS' END
+                WHEN (r.person_name IS NOT NULL OR r.transaction_nature = 'BIZUM') AND r.amount < 0
+                    THEN CASE WHEN r.transaction_nature = 'BIZUM' THEN 'VAR_BIZUM' ELSE 'VAR_OTROS' END
+
+                -- Naturalezas bancarias automáticas
+                WHEN r.transaction_nature = 'SALARY'              THEN 'ING_NOMINA'
                 WHEN r.transaction_nature = 'MORTGAGE_PAYMENT'     THEN 'FIX_HIPOTECA'
                 WHEN r.transaction_nature = 'CARD_SETTLEMENT'      THEN 'MOV_LIQ_TARJETA'
                 WHEN r.transaction_nature = 'INTERNAL_TRANSFER'    THEN 'MOV_TRASPASO'
@@ -62,25 +84,34 @@ adjustments_applied AS (
                 WHEN r.transaction_nature = 'LOAN_DISBURSEMENT'    THEN 'CPX_DISPOSICION'
                 WHEN r.transaction_nature = 'EXPENSE_REFUND'       THEN 'VAR_DEVOLUCION'
                 WHEN r.transaction_nature = 'REWARD'               THEN 'ING_RENDIMIENTOS'
-                WHEN r.amount > 0                                  THEN 'ING_TRANSFERENCIAS'
+
+                -- Fallback por signo
+                WHEN r.amount > 0 THEN 'ING_TRANSFERENCIAS'
                 ELSE 'VAR_OTROS'
             END
         ) AS final_category_id,
 
-        -- Resolución final del comercio o persona
+        -- B. RESOLUCIÓN DE COMERCIO / BENEFICIARIO
         COALESCE(
             adj.merchant_override,
             r.matched_merchant_name,
-            r.bizum_person,
+            r.person_name,
+            -- Datáfonos de tarjetas (antes de la coma)
             CASE 
                 WHEN r.account_type = 'card' AND r.description LIKE '%,%' 
-                THEN TRIM(SPLIT_PART(r.description, ',', 1))
+                THEN TRIM(SPLIT_PART(r.description, ',', 1)) 
             END,
+            -- Recibos domiciliados
             CASE 
                 WHEN r.description ~* '^(RECIBO|RECIB)\s*\/?' 
-                THEN TRIM(REGEXP_REPLACE(r.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i'))
+                THEN TRIM(REGEXP_REPLACE(r.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
             END,
-            'No Identificado'
+            -- Extracto sintáctico de transferencias Bankinter
+            CASE 
+                WHEN r.description ~* '^(TRANSF\s+OTR\s*\/?|TRANSF\s+I\s*\/?|TRANS\s*\/?|TRANSFERENCIA\s+DE\s+|TRANSFERENCIA\s+A\s+)' 
+                THEN TRIM(REGEXP_REPLACE(r.description, '^(TRANSF\s+OTR\s*\/?|TRANSF\s+I\s*\/?|TRANS\s*\/?|TRANSFERENCIA\s+DE\s+|TRANSFERENCIA\s+A\s+)\s*', '', 'i')) 
+            END,
+            '-'
         ) AS final_merchant_name
 
     FROM rules_matched r
@@ -88,7 +119,7 @@ adjustments_applied AS (
         ON r.source_hash = adj.source_hash
 ),
 
--- 4. Cruce con taxonomía oficial dim_categories
+-- 4. Cruce dimensional con dim_categories
 dimensional_enrichment AS (
     SELECT
         a.*,
@@ -102,41 +133,32 @@ dimensional_enrichment AS (
         ON a.final_category_id = cat.category_id
 ),
 
--- 5. Lógica de negocio contable: personal_amount e is_shared
+-- 5. Cálculos finales y ordenación de columnas
 final_calculations AS (
     SELECT
         -- Fechas
         value_date,
         booking_date,
 
-        -- Métricas e importes
+        -- Importes
         amount,
 
-        -- Cálculo de personal_amount con soporte a compensaciones de pareja
         CASE
-            -- A. Overrides manuales
             WHEN adjustment_type = 'PARTNER_EXPENSE' THEN 0.00
             WHEN adjustment_type = 'MY_EXPENSE'      THEN amount
             WHEN adjustment_type = 'PARTIAL_EXPENSE' 
                 THEN -ROUND((ABS(amount) - ABS(COALESCE(adjustment_amount, 0))) * 0.5, 2)
-
-            -- B. Según titularidad de la cuenta
             WHEN account_ownership = 'personal' THEN amount
-            WHEN account_ownership = 'common' AND resolved_movement_type = 'EXPENSE'
+            WHEN account_ownership = 'common' AND resolved_movement_type IN ('EXPENSE', 'INCOME')
                 THEN ROUND(amount * 0.5, 2)
-            WHEN account_ownership = 'common' AND resolved_movement_type = 'INCOME'
-                THEN ROUND(amount * 0.5, 2)
-
-            -- C. Movimientos neutros / tesorería
             ELSE 0.00
         END AS personal_amount,
 
         balance,
 
-        -- Flags contables de control
+        -- Flags contables
         resolved_is_pnl AS is_pnl,
 
-        -- Flag estricto de gasto compartido
         CASE
             WHEN NOT resolved_is_pnl THEN FALSE
             WHEN resolved_movement_type = 'TRANSFER' THEN FALSE
@@ -166,10 +188,12 @@ final_calculations AS (
         account_type,
         account_ownership,
 
-        -- Auditoría y ajustes (al final)
+        -- Ajustes manuales
         adjustment_type,
         adjustment_amount,
         adjustment_reason,
+
+        -- Auditoría e identificadores técnicos al final
         loaded_at,
         source_row_id,
         source_hash
