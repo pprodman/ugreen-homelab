@@ -54,6 +54,8 @@ adjustments_applied AS (
                 -- Caso Pareja (Lledó)
                 WHEN r.person_name ILIKE '%Lledo%' AND r.amount < 0 AND r.account_ownership = 'personal'
                     THEN 'VAR_OTROS'
+                WHEN r.person_name ILIKE '%Lledo%' AND r.amount < 0 AND r.account_ownership = 'common'
+                    THEN 'MOV_TRASPASO'
                 WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0 AND r.account_ownership = 'common'
                     THEN 'ING_TRANSFERENCIAS'
                 WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0
@@ -181,13 +183,13 @@ final_calculations AS (
         resolved_is_pnl AS is_pnl,
 
         CASE
-            WHEN NOT resolved_is_pnl THEN FALSE
-            WHEN resolved_movement_type = 'TRANSFER' THEN FALSE
-            WHEN adjustment_type IN ('PARTNER_EXPENSE', 'MY_EXPENSE') THEN FALSE
-            WHEN adjustment_type = 'PARTIAL_EXPENSE' THEN TRUE
-            WHEN account_ownership = 'common' THEN TRUE
-            ELSE FALSE
-        END AS is_shared,
+    WHEN adjustment_type IN ('PARTNER_EXPENSE', 'MY_EXPENSE') THEN FALSE
+    WHEN adjustment_type = 'PARTIAL_EXPENSE' THEN TRUE
+    WHEN resolved_movement_type = 'TRANSFER' THEN FALSE
+    WHEN account_ownership = 'common' THEN TRUE
+    WHEN NOT resolved_is_pnl THEN FALSE
+    ELSE FALSE
+END AS is_shared
 
         resolved_movement_type AS movement_type,
         transaction_nature,
