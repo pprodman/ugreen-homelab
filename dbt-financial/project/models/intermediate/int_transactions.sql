@@ -9,7 +9,7 @@ persons_matched AS (
         -- Alias seguro de la columna de nombre (adapta mp.person_name si en tu DB es bizum_name)
         COALESCE(mp.person_name, mp.bizum_name) AS person_name
     FROM base_unioned b
-    LEFT JOIN {{ source('stg', 'participants') }} mp
+    LEFT JOIN {{ source('stg', 'master_participants') }} mp
         ON TRANSLATE(REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
            ILIKE '%' || TRANSLATE(REGEXP_REPLACE(mp.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
     ORDER BY 
