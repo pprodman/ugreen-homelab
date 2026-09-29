@@ -1,0 +1,40 @@
+services:
+  # ==========================================
+  # GENERADOR: XTREAM 2 JELLYFIN (.strm & .nfo)
+  # ==========================================
+  xtream2jellyfin:
+    image: ghcr.io/mishka81/xtream2jellyfin:latest
+    container_name: xtream2jellyfin
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/config:/app/config
+      - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/cache:/app/cache
+      - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/media:/app/media
+
+  # ==========================================
+  # SERVIDOR: JELLYFIN
+  # ==========================================
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    depends_on:
+      - xtream2jellyfin
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    ports:
+      - "8096:8096"
+    volumes:
+      - ${APPDATA_PATH}/jellyfin-iptv/jellyfin/config:/config
+      - ${APPDATA_PATH}/jellyfin-iptv/jellyfin/cache:/cache
+      - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/media:/media:ro
+    tmpfs:
+      - /transcode:size=2G,uid=${PUID},gid=${PGID}
+    devices:
+      - /dev/dri:/dev/dri
