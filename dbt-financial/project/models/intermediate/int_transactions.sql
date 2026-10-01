@@ -56,8 +56,8 @@ adjustments_applied AS (
                     THEN 'VAR_OTROS'
                 WHEN r.person_name ILIKE '%Lledo%' AND r.amount < 0 AND r.account_ownership = 'common'
                     THEN 'MOV_TRASPASO'
-                WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0 AND r.account_ownership = 'common'
-                    THEN 'ING_TRANSFERENCIAS'
+                WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0 AND r.account_ownership = 'common'  -- esto deberia ser MOV_TASPASO
+                    THEN 'MOV_FONDEO_COMUN'
                 WHEN r.person_name ILIKE '%Lledo%' AND r.amount > 0
                     THEN 'ING_BIZUM'
 
@@ -72,7 +72,7 @@ adjustments_applied AS (
                 WHEN r.transaction_nature = 'MORTGAGE_PAYMENT'     THEN 'FIX_HIPOTECA'
                 WHEN r.transaction_nature = 'CARD_SETTLEMENT'      THEN 'MOV_LIQ_TARJETA'
                 WHEN r.transaction_nature = 'INTERNAL_TRANSFER'    THEN 'MOV_TRASPASO'
-                WHEN r.transaction_nature = 'PARTNER_CONTRIBUTION' THEN 'ING_TRANSFERENCIAS'
+                WHEN r.transaction_nature = 'PARTNER_CONTRIBUTION' THEN 'MOV_FONDEO_COMUN' -- MOV_TRASPASO
                 WHEN r.transaction_nature = 'LOAN_DISBURSEMENT'    THEN 'CPX_DISPOSICION'
                 WHEN r.transaction_nature = 'EXPENSE_REFUND'       THEN 'VAR_COM_ONLINE'
                 WHEN r.transaction_nature = 'REWARD'               THEN 'ING_RENDIMIENTOS'
