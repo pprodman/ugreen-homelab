@@ -12,7 +12,7 @@ with_participant AS (
         b.*,
         p.person_name AS participant_name
     FROM base b
-    LEFT JOIN {{ ref('master_participants') }} p
+    LEFT JOIN {{ source('stg', 'master_participants') }} p
         ON TRANSLATE(REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
            ILIKE '%' || TRANSLATE(REGEXP_REPLACE(p.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
     ORDER BY b.source_hash, LENGTH(p.keyword) DESC NULLS LAST
@@ -28,7 +28,7 @@ with_mapping AS (
         NULLIF(TRIM(r.merchant_name), '') AS rule_merchant,
         r.priority
     FROM with_participant p
-    LEFT JOIN {{ ref('rules_mapping') }} r
+    LEFT JOIN {{ source('stg', 'rules_mapping') }} r
         ON TRANSLATE(REGEXP_REPLACE(p.description, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
            ILIKE '%' || TRANSLATE(REGEXP_REPLACE(r.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
 ),
@@ -55,7 +55,7 @@ with_adjustments AS (
         a.adjustment_amount,
         a.reason AS adjustment_reason
     FROM mapping_ranked m
-    LEFT JOIN {{ ref('master_adjustments') }} a
+    LEFT JOIN {{ source('stg', 'master_adjustments') }} a
         ON m.source_hash = a.source_hash
     WHERE m.mapping_rank = 1
 ),
@@ -123,7 +123,7 @@ with_category AS (
         COALESCE(c.is_pnl, r.is_pnl) AS category_is_pnl,
         COALESCE(c.movement_type, r.movement_type) AS resolved_movement_type
     FROM resolved r
-    LEFT JOIN {{ ref('dim_categories') }} c
+    LEFT JOIN {{ source('stg', 'dim_categories') }} c
         ON r.final_category_id = c.category_id
 ),
 
