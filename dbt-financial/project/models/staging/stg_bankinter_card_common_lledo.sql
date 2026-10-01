@@ -3,7 +3,7 @@ SELECT
     'BANKINTER_CARD_COMMON_LLEDO'::VARCHAR(50) AS account_id,
 
     -- Fechas
-    fecha::DATE                                AS booking_date,
+    fecha::DATE                                AS value_date,
     fecha_cargo::DATE                          AS billing_date,
 
     -- Movimiento
