@@ -12,7 +12,7 @@ with_participant AS (
         b.*,
         p.person_name AS participant_name
     FROM base b
-    LEFT JOIN {{ ref('master_participants') }} p
+    LEFT JOIN {{ source('stg', 'master_participants') }} p
         ON TRANSLATE(REGEXP_REPLACE(REPLACE(b.description, CHR(160), ' '), '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
            ILIKE '%' || TRANSLATE(REGEXP_REPLACE(p.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
     ORDER BY b.source_hash, LENGTH(p.keyword) DESC NULLS LAST
