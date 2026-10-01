@@ -5,15 +5,15 @@ WITH base AS (
 ),
 
 /* ================================================================
-   1. PARTICIPANTES (Desempate por longitud de keyword para evitar duplicados)
+   1. PARTICIPANTES (Normalización frente a \xa0, #$, ; y tildes)
    ================================================================ */
 with_participant AS (
     SELECT DISTINCT ON (b.source_hash)
         b.*,
         p.person_name AS participant_name
     FROM base b
-    LEFT JOIN {{ source('stg', 'master_participants') }} p
-        ON TRANSLATE(REGEXP_REPLACE(b.description, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
+    LEFT JOIN {{ ref('master_participants') }} p
+        ON TRANSLATE(REGEXP_REPLACE(REPLACE(b.description, CHR(160), ' '), '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')
            ILIKE '%' || TRANSLATE(REGEXP_REPLACE(p.keyword, '[^a-zA-Z0-9]+', ' ', 'g'), 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou') || '%'
     ORDER BY b.source_hash, LENGTH(p.keyword) DESC NULLS LAST
 ),
