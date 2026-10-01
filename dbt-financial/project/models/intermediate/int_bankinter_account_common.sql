@@ -27,25 +27,22 @@ classified_nature AS (
             -- 2. Aportaciones periódicas de los titulares (entradas y salidas)
             WHEN description ~* 'PABLO RODRIGUEZ|LLED[OÓ] AMOROS' 
                 THEN 'PARTNER_CONTRIBUTION'
-            -- 3. Traspasos internos
-            WHEN description ILIKE '%TRASPASO INTERNO%' 
-                THEN 'INTERNAL_TRANSFER'
-            -- 4. Disposiciones de capital del préstamo hipotecario (financiación / pasivo)
+            -- 3. Disposiciones de capital del préstamo hipotecario (financiación / pasivo)
             WHEN description ~* 'IMP INIC PT|IMP DISP PT' 
                 THEN 'LOAN_DISBURSEMENT'
-            -- 5. Costes de obra, trámites, tasaciones y escrituras (CAPEX inmobiliario)
+            -- 4. Costes de obra, trámites, tasaciones y escrituras (CAPEX inmobiliario)
             WHEN description ~* 'RESTORE|NURIA AGUT|GLOVAL|PROVISION FO' 
                 THEN 'CAPEX'
-            -- 6. Cuotas mensuales de la hipoteca
+            -- 5. Cuotas mensuales de la hipoteca
             WHEN description ILIKE '%LIQUID. CUOTA PTMO%' 
                 THEN 'MORTGAGE_PAYMENT'
-            -- 7. Pagos/cobros por Bizum en cuenta común
+            -- 6. Pagos/cobros por Bizum en cuenta común
             WHEN description ~* 'BIZUM' 
                 THEN 'BIZUM'
-            -- 8. Devoluciones comerciales estrictas (palabra delimitada e importe positivo)
+            -- 7. Devoluciones comerciales estrictas (palabra delimitada e importe positivo)
             WHEN description ~* '\yANUL' AND amount > 0 
                 THEN 'EXPENSE_REFUND'
-            -- 9. Suministros, comisiones, obra y recibos ordinarios
+            -- 8. Suministros, comisiones, obra y recibos ordinarios
             ELSE 'REGULAR'
         END AS transaction_nature
     FROM base
@@ -59,14 +56,14 @@ SELECT
     -- Transacción
     description,
     amount,
-    balance,
+    balance, 
     ROUND(amount / 2.0, 2) AS personal_amount,
 
     -- Clasificación analítica derivada
     transaction_nature,
 
     CASE
-        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION', 'LOAN_DISBURSEMENT') THEN 'TRANSFER'
+        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'PARTNER_CONTRIBUTION', 'LOAN_DISBURSEMENT') THEN 'TRANSFER'
         WHEN transaction_nature = 'CAPEX' THEN 'EXPENSE'
         WHEN transaction_nature = 'EXPENSE_REFUND' THEN 'EXPENSE'
         WHEN amount > 0 THEN 'INCOME'
@@ -75,7 +72,7 @@ SELECT
     END AS movement_type,
 
     CASE
-        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION', 'LOAN_DISBURSEMENT', 'CAPEX') THEN FALSE
+        WHEN transaction_nature IN ('CARD_SETTLEMENT', 'PARTNER_CONTRIBUTION', 'LOAN_DISBURSEMENT', 'CAPEX') THEN FALSE
         ELSE TRUE
     END AS is_pnl,
 

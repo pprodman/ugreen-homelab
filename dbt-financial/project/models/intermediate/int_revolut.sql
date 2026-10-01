@@ -7,6 +7,7 @@ WITH base AS (
         t.description,
         t.amount,
         t.balance,
+        t.fee,
         t.raw_transaction_type,
         t.source_row_id,
         t.loaded_at,
@@ -48,9 +49,9 @@ SELECT
 
     -- Transacción
     description,
-    amount,
+    (amount - fee) AS amount,
     balance,
-    amount AS personal_amount,
+    (amount - fee) AS personal_amount,
 
     -- Clasificación analítica derivada
     transaction_nature,
