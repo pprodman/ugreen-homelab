@@ -95,10 +95,10 @@ resolved AS (
 
             -- 2. CASUÍSTICA ESPECÍFICA LLEDÓ AMORÓS
             CASE 
-                -- En cuenta personal: cualquier Bizum o transf mutua es compensación de pareja
+                -- Compensaciones mutuas directas entre cuentas personales (en ambas direcciones)
                 WHEN a.participant_name = 'Lledó Amorós' AND a.account_ownership = 'personal'
                     THEN 'PAREJA_COMPENSA'
-                -- En cuenta común: ingresos son fondeo, retiradas son traspaso
+                -- En cuenta común: entradas son fondeo, salidas son traspaso
                 WHEN a.participant_name = 'Lledó Amorós' AND a.account_ownership = 'common' AND a.amount > 0
                     THEN 'MOV_FONDEO_COMUN'
                 WHEN a.participant_name = 'Lledó Amorós' AND a.account_ownership = 'common' AND a.amount < 0
@@ -107,10 +107,8 @@ resolved AS (
 
             -- 3. CASUÍSTICA ESPECÍFICA PABLO RODRÍGUEZ
             CASE
-                -- En cuenta común: aportación propia
                 WHEN a.participant_name = 'Pablo Rodríguez' AND a.account_ownership = 'common' AND a.amount > 0
                     THEN 'MOV_FONDEO_COMUN'
-                -- En cuenta personal o Revolut: traspaso entre cuentas propias
                 WHEN a.participant_name = 'Pablo Rodríguez'
                     THEN 'MOV_TRASPASO'
             END,
@@ -136,18 +134,24 @@ resolved AS (
             END
         ) AS final_category_id,
 
-        -- B. RESOLUCIÓN DE COMERCIO / BENEFICIARIO (Nunca más '-')
+        -- B. RESOLUCIÓN DE COMERCIO (Neutral '-' para ambos en movimientos internos)
         COALESCE(
             -- 1. Override manual
             NULLIF(TRIM(a.merchant_override), ''),
 
-            -- 2. Regla comercial de rules_mapping
+            -- 2. Regla comercial explícita
             NULLIF(TRIM(a.rule_merchant), ''),
 
-            -- 3. Persona física identificada
+            -- 3. Compensaciones de pareja y traspasos/fondeos internos homogéneos
+            CASE
+                WHEN a.participant_name IN ('Lledó Amorós', 'Pablo Rodríguez')
+                    THEN '-'
+            END,
+
+            -- 4. Persona física identificada (amigos, familiares, terceros)
             NULLIF(TRIM(a.participant_name), ''),
 
-            -- 4. Extracción automática en caliente para Bizums no fichados
+            -- 5. Extracción automática en Bizums no fichados
             CASE 
                 WHEN a.description ~* 'BIZUM' 
                 THEN INITCAP(TRIM(
@@ -161,7 +165,7 @@ resolved AS (
                 ))
             END,
 
-            -- 5. Extracción automática para Transferencias particulares no fichadas
+            -- 6. Extracción automática en Transferencias de particulares
             CASE 
                 WHEN a.description ~* '^(TRA\s*NS|TRANSF|TRANSFERENCIA)' 
                 THEN INITCAP(TRIM(
@@ -180,7 +184,7 @@ resolved AS (
                 ))
             END,
 
-            -- 6. Tarjetas (con coma toma la primera parte; sin coma toma la descripción completa)
+            -- 7. Datáfonos de tarjetas
             CASE 
                 WHEN a.account_type = 'card' AND a.description LIKE '%,%' 
                     THEN TRIM(SPLIT_PART(a.description, ',', 1))
@@ -188,7 +192,7 @@ resolved AS (
                     THEN INITCAP(TRIM(a.description))
             END,
 
-            -- 7. Recibos bancarios
+            -- 8. Recibos bancarios
             CASE 
                 WHEN a.description ~* '^(RECIBO|RECIB)\s*\/?' 
                 THEN TRIM(REGEXP_REPLACE(a.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
@@ -210,7 +214,11 @@ with_category AS (
         c.category_name,
         c.subcategory_name,
         COALESCE(c.is_pnl, FALSE) AS category_is_pnl,
-        COALESCE(c.movement_type, r.movement_type) AS resolved_movement_type
+        CASE
+            WHEN r.final_category_id = 'PAREJA_COMPENSA' AND r.amount > 0 THEN 'INCOME'
+            WHEN r.final_category_id = 'PAREJA_COMPENSA' AND r.amount < 0 THEN 'EXPENSE'
+            ELSE COALESCE(c.movement_type, r.movement_type)
+        END AS resolved_movement_type
     FROM resolved r
     LEFT JOIN {{ source('stg', 'dim_categories') }} c
         ON r.final_category_id = c.category_id
@@ -254,10 +262,10 @@ final AS (
         -- Reparto económico personal
         CASE
             WHEN adjustment_type = 'PARTNER_EXPENSE' THEN 0.00
-            WHEN adjustment_type = 'MY_EXPENSE'      THEN amount
+            WHEN adjustment_type = 'MY_EXPENSE'      THEN ROUND(amount, 2)
             WHEN adjustment_type = 'PARTIAL_EXPENSE' 
                 THEN -ROUND((ABS(amount) - ABS(COALESCE(adjustment_amount, 0))) * 0.50, 2)
-            WHEN account_ownership = 'personal' THEN amount
+            WHEN account_ownership = 'personal' THEN ROUND(amount, 2)
             WHEN account_ownership = 'common' AND resolved_movement_type IN ('EXPENSE', 'INCOME')
                 THEN ROUND(amount * 0.50, 2)
             ELSE 0.00
@@ -270,11 +278,9 @@ final AS (
             ELSE 1.00
         END AS personal_share_pct,
 
-        -- P&L riguroso heredado de la taxonomía contable
+        -- P&L riguroso
         CASE
-            -- Si la categoría intrínseca no es P&L (ej. CAPEX, Fondeos, Traspasos)
             WHEN category_is_pnl = FALSE THEN FALSE
-            -- Transferencias y movimientos operativos nunca son P&L
             WHEN resolved_movement_type = 'TRANSFER' THEN FALSE
             WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION') THEN FALSE
             ELSE TRUE
