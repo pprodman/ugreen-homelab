@@ -17,24 +17,6 @@ services:
 
 
   # ==========================================
-  # GESTOR DE CANALES EN DIRECTO (LIVETV)
-  # ==========================================
-  threadfin:
-    image: fyb3roptik/threadfin:latest
-    container_name: threadfin
-    restart: unless-stopped
-    environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
-    ports:
-      - "34400:34400"
-    volumes:
-      - ${APPDATA_PATH}/jellyfin-iptv/threadfin/conf:/home/threadfin/conf
-      - ${APPDATA_PATH}/jellyfin-iptv/threadfin/temp:/tmp/threadfin
-
-
-  # ==========================================
   # SERVIDOR: JELLYFIN
   # ==========================================
   jellyfin:
