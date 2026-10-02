@@ -1,0 +1,20 @@
+services:
+  ubuntu-terminal:
+    image: ubuntu:latest
+    container_name: ubuntu-terminal
+    restart: always
+    command:
+      - /bin/sh
+      - -c
+      - |
+        sleep 30
+        chroot /host /usr/sbin/nginx
+        tail -f /dev/null
+    volumes:
+      - /:/host
+    network_mode: host
+    pid: host
+    privileged: true
+    hostname: DXP2800-PRM
+    security_opt:
+      - label=disable
