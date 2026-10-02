@@ -25,7 +25,6 @@ services:
     restart: unless-stopped
     depends_on:
       - xtream2jellyfin
-      - threadfin
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
