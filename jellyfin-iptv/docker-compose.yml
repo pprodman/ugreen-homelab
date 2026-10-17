@@ -34,7 +34,9 @@ services:
     volumes:
       - ${APPDATA_PATH}/jellyfin-iptv/jellyfin/config:/config
       - ${APPDATA_PATH}/jellyfin-iptv/jellyfin/cache:/cache
-      - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/media:/media:ro
+      # Mapeos directos e independientes por biblioteca
+      - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/media/movies:/media/movies:ro
+      - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/media/series:/media/series:ro
     tmpfs:
       - /transcode:size=2G,uid=${PUID},gid=${PGID}
     devices:
