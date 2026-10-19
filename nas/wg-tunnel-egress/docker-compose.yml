@@ -11,7 +11,7 @@ services:
       - PGID=1000
       - TZ=Europe/Madrid
     volumes:
-      - /volume2/docker/wireguard-tunnel:/config
+      - ${APPDATA_PATH}/wireguard-tunnel:/config
       - /lib/modules:/lib/modules
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
