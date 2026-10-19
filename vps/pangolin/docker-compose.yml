@@ -2,7 +2,7 @@ name: pangolin
 
 services:
   pangolin:
-    image: docker.io/fosrl/pangolin:1.18.4
+    image: docker.io/fosrl/pangolin:latest
     container_name: pangolin
     restart: unless-stopped
     deploy:
@@ -13,14 +13,23 @@ services:
           memory: 256m
     volumes:
       - /opt/pangolin/config:/app/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/v1/"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
     networks:
       - pangolin-internal
       - homelab-net
 
   gerbil:
-    image: docker.io/fosrl/gerbil:1.4.0
+    image: docker.io/fosrl/gerbil:latest
     container_name: gerbil
     restart: unless-stopped
+    depends_on:
+      pangolin:
+        condition: service_healthy
     command:
       - --reachableAt=http://gerbil:3004
       - --generateAndSaveKeyTo=/var/config/key
@@ -41,12 +50,13 @@ services:
       - homelab-net
 
   traefik:
-    image: docker.io/traefik:v3.6
+    image: docker.io/traefik:v3.7
     container_name: traefik
     restart: unless-stopped
     network_mode: service:gerbil
     depends_on:
-      - gerbil
+      gerbil:
+        condition: service_started
     command:
       - --configFile=/etc/traefik/traefik_config.yml
     volumes:
