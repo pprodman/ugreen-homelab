@@ -57,18 +57,6 @@ services:
       - /opt/pangolin/config/letsencrypt:/letsencrypt
       - /opt/pangolin/config/traefik/logs:/var/log/traefik
 
-  hawser:
-    image: ghcr.io/finsys/hawser:latest
-    container_name: hawser
-    restart: unless-stopped
-    environment:
-      - DOCKHAND_SERVER_URL=wss://dockhand.bearslions.com/api/hawser/connect
-      - TOKEN=${HAWSER_TOKEN}
-      - AGENT_NAME=vps-pangolin
-      - LOG_LEVEL=info
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-
 networks:
   default:
     driver: bridge
