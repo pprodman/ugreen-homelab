@@ -5,19 +5,20 @@ services:
     hostname: ugreen-nas
     restart: unless-stopped
     network_mode: host
-    privileged: true
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    environment:
-      - TS_AUTHKEY=${TS_AUTHKEY}
-      - TS_STATE_DIR=/var/lib/tailscale
-      # 1. Anuncia el Exit Node
-      # 2. --accept-dns=false evita que Tailscale sobreescriba los DNS locales de tu NAS
-      - TS_EXTRA_ARGS=--reset --advertise-exit-node --accept-dns=false
     volumes:
+      # Ajusta esta ruta a tu carpeta real de Docker en el NAS Ugreen:
       - ${APPDATA_PATH}/tailscale:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
+    environment:
+      - TS_STATE_DIR=/var/lib/tailscale
+      # Obliga a usar el kernel de Linux para máxima velocidad:
+      - TS_USERSPACE=false
+      # 1. Anuncia que es Exit Node
+      # 2. --accept-dns=false evita que Tailscale toque los DNS internos de tu NAS
+      - TS_EXTRA_ARGS=--advertise-exit-node --accept-dns=false --reset
     logging:
       driver: "json-file"
       options:
