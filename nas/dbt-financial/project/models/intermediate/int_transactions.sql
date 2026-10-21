@@ -288,23 +288,44 @@ final AS (
             ELSE 1.00
         END AS personal_share_pct,
 
-        -- P&L riguroso
+        -- P&L RIGUROSO (Excluye transferencias, CAPEX y gastos ajenos)
         CASE
+            -- 1. Gastos o abonos exclusivos del socio (ej. 100% Lledó en tarjeta común)
+            WHEN adjustment_type = 'PARTNER_EXPENSE' THEN FALSE
+
+            -- 2. Categorías intrínsecamente no P&L (CAPEX, Fondeos, Préstamos, Traspasos)
             WHEN category_is_pnl = FALSE THEN FALSE
+
+            -- 3. Movimientos operativos que nunca son P&L
             WHEN resolved_movement_type = 'TRANSFER' THEN FALSE
-            WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION')
-                AND category_id_override IS NULL
-                THEN FALSE
+            WHEN transaction_nature IN ('INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION') THEN FALSE
+
+            -- 4. Liquidaciones de tarjeta (CARD_SETTLEMENT):
+            --    Solo son P&L si se les ha forzado una categoría manual de gasto (meses sin extracto)
+            WHEN transaction_nature = 'CARD_SETTLEMENT' AND category_id_override IS NULL THEN FALSE
+
             ELSE TRUE
         END AS is_pnl,
 
-        -- Gasto compartido
+        -- GASTO COMPARTIDO (is_shared)
         CASE
+            -- Si no computa en P&L, no puede ser gasto compartido operativo
             WHEN category_is_pnl = FALSE THEN FALSE
             WHEN resolved_movement_type = 'TRANSFER' THEN FALSE
-            WHEN adjustment_type IN ('PARTNER_EXPENSE', 'MY_EXPENSE') THEN FALSE
+            WHEN adjustment_type = 'PARTNER_EXPENSE' THEN FALSE
+
+            -- Ajustes manuales explícitos
+            WHEN adjustment_type = 'MY_EXPENSE'      THEN FALSE
             WHEN adjustment_type = 'PARTIAL_EXPENSE' THEN TRUE
-            WHEN account_ownership = 'common' THEN TRUE
+
+            -- Gastos en cuenta o tarjeta común
+            WHEN account_ownership = 'common' AND transaction_nature != 'CARD_SETTLEMENT' THEN TRUE
+            WHEN account_ownership = 'common' AND transaction_nature = 'CARD_SETTLEMENT' 
+                 AND category_id_override IS NOT NULL THEN TRUE
+
+            -- Compensaciones mutuas de pareja en cuenta personal
+            WHEN final_category_id = 'PAREJA_COMPENSA' THEN TRUE
+
             ELSE FALSE
         END AS is_shared,
 
