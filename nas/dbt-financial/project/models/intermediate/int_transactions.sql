@@ -227,6 +227,7 @@ with_category AS (
         CASE
             WHEN r.final_category_id = 'PAREJA_COMPENSA' AND r.amount > 0 THEN 'INCOME'
             WHEN r.final_category_id = 'PAREJA_COMPENSA' AND r.amount < 0 THEN 'EXPENSE'
+            WHEN r.amount > 0 AND c.movement_type = 'EXPENSE' THEN 'EXPENSE_REFUND'
             ELSE COALESCE(c.movement_type, r.movement_type)
         END AS resolved_movement_type
     FROM resolved r
