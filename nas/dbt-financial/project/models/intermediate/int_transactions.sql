@@ -82,7 +82,7 @@ with_adjustments AS (
 ),
 
 /* ================================================================
-   4. RESOLUCIÓN FINAL DE CATEGORÍA Y COMERCIO
+   4. RESOLUCIÓN FINAL DE CATEGORÍA, COMERCIO Y PARTICIPANTE
    ================================================================ */
 resolved AS (
     SELECT
@@ -93,19 +93,23 @@ resolved AS (
             -- 1. Override manual
             a.category_id_override,
 
-            -- 2. CASUÍSTICA ESPECÍFICA LLEDÓ AMORÓS
+            -- 2. EXCEPCIÓN: Retirada de efectivo en ventanilla/cajero propio
+            CASE
+                WHEN a.description ~* '\m(CAJA|CAJERO)\M' AND a.amount < 0
+                    THEN 'VAR_CAJERO'
+            END,
+
+            -- 3. CASUÍSTICA ESPECÍFICA LLEDÓ AMORÓS
             CASE 
-                -- Compensaciones mutuas directas entre cuentas personales (en ambas direcciones)
                 WHEN a.participant_name = 'Lledó Amorós' AND a.account_ownership = 'personal'
                     THEN 'PAREJA_COMPENSA'
-                -- En cuenta común: entradas son fondeo, salidas son traspaso
                 WHEN a.participant_name = 'Lledó Amorós' AND a.account_ownership = 'common' AND a.amount > 0
                     THEN 'MOV_FONDEO_COMUN'
                 WHEN a.participant_name = 'Lledó Amorós' AND a.account_ownership = 'common' AND a.amount < 0
                     THEN 'MOV_TRASPASO'
             END,
 
-            -- 3. CASUÍSTICA ESPECÍFICA PABLO RODRÍGUEZ
+            -- 4. CASUÍSTICA ESPECÍFICA PABLO RODRÍGUEZ (Transferencias y fondeos propios)
             CASE
                 WHEN a.participant_name = 'Pablo Rodríguez' AND a.account_ownership = 'common' AND a.amount > 0
                     THEN 'MOV_FONDEO_COMUN'
@@ -113,10 +117,10 @@ resolved AS (
                     THEN 'MOV_TRASPASO'
             END,
 
-            -- 4. Regla comercial de rules_mapping
+            -- 5. Regla comercial de rules_mapping
             a.rule_category_id,
 
-            -- 5. Fallback por naturaleza bancaria intrínseca
+            -- 6. Fallback por naturaleza bancaria intrínseca
             CASE
                 WHEN a.transaction_nature = 'PARTNER_CONTRIBUTION' AND a.amount > 0 THEN 'MOV_FONDEO_COMUN'
                 WHEN a.transaction_nature = 'PARTNER_CONTRIBUTION' AND a.amount < 0 THEN 'MOV_TRASPASO'
@@ -134,24 +138,33 @@ resolved AS (
             END
         ) AS final_category_id,
 
-        -- B. RESOLUCIÓN DE COMERCIO (Neutral '-' para ambos en movimientos internos)
-        COALESCE(
-            -- 1. Override manual
-            NULLIF(TRIM(a.merchant_override), ''),
+        -- B. RESOLUCIÓN DE PARTICIPANTE (Evitar vincular a Pablo si es cajero)
+        CASE
+            WHEN a.description ~* '\m(CAJA|CAJERO)\M' AND a.amount < 0
+                THEN NULL
+            ELSE a.participant_name
+        END AS final_participant_name,
 
-            -- 2. Regla comercial explícita
+        -- C. RESOLUCIÓN DE COMERCIO
+        COALESCE(
+            NULLIF(TRIM(a.merchant_override), ''),
             NULLIF(TRIM(a.rule_merchant), ''),
 
-            -- 3. Compensaciones de pareja y traspasos/fondeos internos homogéneos
+            -- Si es retirada en ventanilla o cajero
+            CASE
+                WHEN a.description ~* '\m(CAJA|CAJERO)\M' AND a.amount < 0
+                    THEN 'Cajero'
+            END,
+
+            -- Movimientos internos de pareja o propios: neutral '-'
             CASE
                 WHEN a.participant_name IN ('Lledó Amorós', 'Pablo Rodríguez')
                     THEN '-'
             END,
 
-            -- 4. Persona física identificada (amigos, familiares, terceros)
             NULLIF(TRIM(a.participant_name), ''),
 
-            -- 5. Extracción automática en Bizums no fichados
+            -- Heurísticas habituales...
             CASE 
                 WHEN a.description ~* 'BIZUM' 
                 THEN INITCAP(TRIM(
@@ -165,7 +178,6 @@ resolved AS (
                 ))
             END,
 
-            -- 6. Extracción automática en Transferencias de particulares
             CASE 
                 WHEN a.description ~* '^(TRA\s*NS|TRANSF|TRANSFERENCIA)' 
                 THEN INITCAP(TRIM(
@@ -184,7 +196,6 @@ resolved AS (
                 ))
             END,
 
-            -- 7. Datáfonos de tarjetas
             CASE 
                 WHEN a.account_type = 'card' AND a.description LIKE '%,%' 
                     THEN TRIM(SPLIT_PART(a.description, ',', 1))
@@ -192,7 +203,6 @@ resolved AS (
                     THEN INITCAP(TRIM(a.description))
             END,
 
-            -- 8. Recibos bancarios
             CASE 
                 WHEN a.description ~* '^(RECIBO|RECIB)\s*\/?' 
                 THEN TRIM(REGEXP_REPLACE(a.description, '^(RECIBO|RECIB)\s*\/?\s*', '', 'i')) 
@@ -257,7 +267,7 @@ final AS (
 
         -- Beneficiario / Contacto
         final_merchant AS merchant,
-        participant_name,
+        final_participant_name AS participant_name,
 
         -- Reparto económico personal
         CASE
