@@ -292,7 +292,9 @@ final AS (
         CASE
             WHEN category_is_pnl = FALSE THEN FALSE
             WHEN resolved_movement_type = 'TRANSFER' THEN FALSE
-            WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION') THEN FALSE
+            WHEN transaction_nature IN ('CARD_SETTLEMENT', 'INTERNAL_TRANSFER', 'PARTNER_CONTRIBUTION')
+                AND category_id_override IS NULL
+                THEN FALSE
             ELSE TRUE
         END AS is_pnl,
 
