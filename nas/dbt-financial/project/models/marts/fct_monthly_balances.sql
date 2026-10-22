@@ -13,7 +13,7 @@ WITH ranked_tx AS (
         balance,
         ROW_NUMBER() OVER (
             PARTITION BY account_id, DATE_TRUNC('month', value_date)
-            ORDER BY value_date DESC, source_row_id DESC
+            ORDER BY value_date DESC, booking_date DESC, loaded_at DESC
         ) AS rank_last_in_month
     FROM {{ ref('fct_transactions') }}
     WHERE balance IS NOT NULL
