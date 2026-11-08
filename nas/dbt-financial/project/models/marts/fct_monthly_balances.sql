@@ -34,7 +34,7 @@ account_months as (
 -- 2. Flujo neto mensual por cuenta a partir de transacciones intermedias
 monthly_cashflow as (
     select
-        to_char(transaction_date, 'YYYY-MM') as year_month,
+        year_month,
         account_id,
         sum(amount) as net_monthly_flow
     from {{ ref('int_transactions') }}
