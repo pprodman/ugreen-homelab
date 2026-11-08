@@ -3,13 +3,12 @@
 ) }}
 
 with calendar as (
-    -- Extraer el último día de cada mes de tu dim_calendar
-    select
+    -- Extraer el último día de cada mes directamente de dim_calendar
+    select distinct
         year_month,
-        max(date_day) as month_end_date
+        end_of_month as month_end_date
     from {{ ref('dim_calendar') }}
-    where date_day <= current_date
-    group by 1
+    where date_key <= current_date
 ),
 
 accounts as (
@@ -71,3 +70,4 @@ select
         rows between unbounded preceding and current row
     ) as ending_balance
 from combined
+order by account_id, month_end_date
