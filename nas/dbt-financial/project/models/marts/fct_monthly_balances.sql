@@ -17,7 +17,7 @@ accounts as (
         account_id,
         account_name,
         account_type
-    from {{ ref('dim_account') }}
+    from {{ source('stg', 'dim_account') }}
 ),
 
 -- 1. Matriz completa: todas las cuentas en todos los meses
