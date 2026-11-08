@@ -3,10 +3,11 @@
 ) }}
 
 with calendar as (
-    -- Extraer el último día de cada mes directamente de dim_calendar
+    -- Extraemos el primer y último día de cada mes transcurrido
     select distinct
-        year_month,
-        end_of_month as month_end_date
+        start_of_month,
+        end_of_month as month_end_date,
+        year_month as year_month_str
     from {{ ref('dim_calendar') }}
     where date_key <= current_date
 ),
@@ -19,11 +20,12 @@ accounts as (
     from {{ source('stg', 'dim_account') }}
 ),
 
--- 1. Matriz completa: todas las cuentas en todos los meses
+-- 1. Matriz completa de cuentas x meses
 account_months as (
     select
-        c.year_month,
+        c.start_of_month,
         c.month_end_date,
+        c.year_month_str,
         a.account_id,
         a.account_name,
         a.account_type
@@ -31,20 +33,20 @@ account_months as (
     cross join accounts a
 ),
 
--- 2. Flujo neto mensual por cuenta a partir de transacciones intermedias
+-- 2. Flujo neto mensual por cuenta (agrupando por el primer día de mes)
 monthly_cashflow as (
     select
-        to_char(date, 'YYYY-MM') as year_month,
+        year_month, -- Viene como DATE desde int_transactions
         account_id,
         sum(amount) as net_monthly_flow
     from {{ ref('int_transactions') }}
     group by 1, 2
 ),
 
--- 3. Cruzar la matriz con los flujos (los meses sin movimientos devuelven 0)
+-- 3. Cruce con coincidencia exacta de tipo DATE
 combined as (
     select
-        am.year_month,
+        am.year_month_str as year_month,
         am.month_end_date,
         am.account_id,
         am.account_name,
@@ -52,11 +54,11 @@ combined as (
         coalesce(mc.net_monthly_flow, 0) as net_monthly_flow
     from account_months am
     left join monthly_cashflow mc
-        on am.year_month = mc.year_month
+        on am.start_of_month = mc.year_month
        and am.account_id = mc.account_id
 )
 
--- 4. Cálculo del saldo acumulado mediante Window Function
+-- 4. Cálculo del saldo acumulado temporal
 select
     year_month,
     month_end_date,
