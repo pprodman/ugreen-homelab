@@ -5,7 +5,7 @@
 WITH monthly_spine AS (
     -- Extrae únicamente un registro por cada primer día de mes dentro de tu rango real
     SELECT DISTINCT start_of_month, year, month, year_month
-    FROM {{ ref('dim_date') }}
+    FROM {{ ref('dim_calendar') }}
     WHERE start_of_month >= '2021-12-01'::DATE
       AND start_of_month <= CURRENT_DATE
 ),
