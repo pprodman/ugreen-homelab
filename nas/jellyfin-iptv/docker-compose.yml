@@ -10,8 +10,6 @@ services:
       - TZ=${TZ}
       - PUID=${PUID}
       - PGID=${PGID}
-      - HTTP_PROXY=${PROXY_URL}
-      - HTTPS_PROXY=${PROXY_URL}
     volumes:
       - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/config:/app/config
       - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/cache:/app/cache
