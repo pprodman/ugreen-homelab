@@ -1,4 +1,16 @@
 services:
+
+  tunnel-tigres:
+    image: ginuerzh/gost:latest
+    container_name: tunnel-tigres
+    restart: unless-stopped
+    command: >-
+      -L=tcp://:2087/mainhost.123tigres.org:2087
+      -F=http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}
+    extra_hosts:
+      - "mainhost.123tigres.org:127.0.0.1"
+
+
   # ==========================================
   # GENERADOR: XTREAM 2 JELLYFIN (.strm & .nfo)
   # ==========================================
@@ -6,13 +18,13 @@ services:
     image: ghcr.io/mishka81/xtream2jellyfin:latest
     container_name: xtream2jellyfin
     restart: unless-stopped
+    depends_on:
+      - tunnel-tigres
+    network_mode: "service:tunnel-tigres"
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
       - PGID=${PGID}
-      - HTTP_PROXY=${PROXY_URL}
-      - HTTPS_PROXY=${PROXY_URL}
-      - JAVA_OPTS=${JAVA_OPTS}
     volumes:
       - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/config:/app/config
       - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/cache:/app/cache
