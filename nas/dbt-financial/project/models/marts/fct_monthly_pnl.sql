@@ -28,7 +28,7 @@ monthly_pnl AS (
         END), 2) AS personal_expense,
 
         ROUND(SUM(CASE 
-            WHEN is_pnl = TRUE AND group_name = 'Gastos Fijos' 
+            WHEN is_pnl = TRUE AND group_name IN ('Gastos Fijos', 'Gastos Compartidos') 
                 THEN personal_amount 
             ELSE 0.00 
         END), 2) AS personal_fixed_expenses,
@@ -57,7 +57,7 @@ monthly_pnl AS (
                 (
                     SUM(CASE WHEN is_pnl = TRUE THEN personal_amount ELSE 0.00 END)
                     / SUM(CASE WHEN is_pnl = TRUE AND movement_type = 'INCOME' THEN personal_amount ELSE 0.00 END)
-                ) * 100.0, 
+                ), 
                 2
             )
             ELSE 0.00
@@ -97,21 +97,21 @@ with_mom_metrics AS (
         -- 1. Ingresos
         ROUND(
             ((personal_income - LAG(personal_income, 1) OVER (ORDER BY year_month ASC)) 
-            / NULLIF(LAG(personal_income, 1) OVER (ORDER BY year_month ASC), 0)) * 100.0,
+            / NULLIF(LAG(personal_income, 1) OVER (ORDER BY year_month ASC), 0)),
             2
         ) AS personal_income_mom_pct,
 
         -- 2. Gastos personales (al ser negativos, se evalúa la variación de magnitud absoluta)
         ROUND(
             ((ABS(personal_expense) - ABS(LAG(personal_expense, 1) OVER (ORDER BY year_month ASC))) 
-            / NULLIF(ABS(LAG(personal_expense, 1) OVER (ORDER BY year_month ASC)), 0)) * 100.0,
+            / NULLIF(ABS(LAG(personal_expense, 1) OVER (ORDER BY year_month ASC)), 0)),
             2
         ) AS personal_expense_mom_pct,
 
         -- 3. Coste total del hogar
         ROUND(
             ((ABS(household_total_cost) - ABS(LAG(household_total_cost, 1) OVER (ORDER BY year_month ASC))) 
-            / NULLIF(ABS(LAG(household_total_cost, 1) OVER (ORDER BY year_month ASC)), 0)) * 100.0,
+            / NULLIF(ABS(LAG(household_total_cost, 1) OVER (ORDER BY year_month ASC)), 0)),
             2
         ) AS household_cost_mom_pct
 
