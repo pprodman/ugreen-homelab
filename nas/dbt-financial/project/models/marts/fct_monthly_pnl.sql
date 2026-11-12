@@ -34,16 +34,10 @@ monthly_pnl AS (
         END), 2) AS personal_fixed_expenses,
 
         ROUND(SUM(CASE 
-            WHEN is_pnl = TRUE AND group_name = 'Gastos Variables' 
+            WHEN is_pnl = TRUE AND group_name IN ('Gastos Variables', 'Gastos Financieros') 
                 THEN personal_amount 
             ELSE 0.00 
         END), 2) AS personal_variable_expenses,
-
-        ROUND(SUM(CASE 
-            WHEN is_pnl = TRUE AND group_name = 'Gastos Financieros' 
-                THEN personal_amount 
-            ELSE 0.00 
-        END), 2) AS personal_financial_expenses,
 
         ROUND(SUM(CASE 
             WHEN is_pnl = TRUE 
