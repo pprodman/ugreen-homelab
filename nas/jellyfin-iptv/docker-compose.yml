@@ -9,6 +9,11 @@ services:
       -F=http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}
     extra_hosts:
       - "mainhost.123tigres.org:127.0.0.1"
+    networks:
+      default:
+        # Para Jellyfin (que está en la red bridge y resolverá este dominio hacia este contenedor)
+        aliases:
+          - mainhost.123tigres.org
 
 
   # ==========================================
@@ -40,13 +45,11 @@ services:
     restart: unless-stopped
     depends_on:
       - xtream2jellyfin
+      - tunnel-tigres
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
       - PGID=${PGID}
-      - HTTP_PROXY=${PROXY_URL}
-      - HTTPS_PROXY=${PROXY_URL}
-      - NO_PROXY=localhost,127.0.0.1,192.168.1.0/24,bearslions.com
     ports:
       - "8096:8096"
     volumes:
