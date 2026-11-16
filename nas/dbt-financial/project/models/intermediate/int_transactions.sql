@@ -272,21 +272,43 @@ final AS (
 
         -- Reparto económico personal
         CASE
+            -- 1. Ajustes manuales explícitos
             WHEN adjustment_type = 'PARTNER_EXPENSE' THEN 0.00
             WHEN adjustment_type = 'MY_EXPENSE'      THEN ROUND(amount, 2)
             WHEN adjustment_type = 'PARTIAL_EXPENSE' 
                 THEN -ROUND((ABS(amount) - ABS(COALESCE(adjustment_amount, 0))) * 0.50, 2)
-            WHEN account_ownership = 'personal' THEN ROUND(amount, 2)
-            WHEN account_ownership = 'common' AND resolved_movement_type IN ('EXPENSE', 'INCOME')
+
+            -- 2. Fondeos a cuenta común: el tuyo entra al 100% en tu patrimonio, el de Lledó al 0%
+            WHEN final_category_id = 'MOV_FONDEO_COMUN' AND final_participant_name = 'Pablo Rodríguez'
+                THEN ROUND(amount, 2)
+            WHEN final_category_id = 'MOV_FONDEO_COMUN'
+                THEN 0.00
+
+            -- 3. Cuentas individuales: 100% tuyo (incluye ingresos, gastos y traspasos internos)
+            WHEN account_ownership = 'personal' 
+                THEN ROUND(amount, 2)
+
+            -- 4. Cuenta/tarjeta común: 50% en ingresos, gastos, devoluciones y CAPEX
+            WHEN account_ownership = 'common' 
+                 AND (resolved_movement_type IN ('EXPENSE', 'INCOME', 'EXPENSE_REFUND') 
+                      OR final_category_id LIKE 'CPX_%')
                 THEN ROUND(amount * 0.50, 2)
+
             ELSE 0.00
         END AS personal_amount,
 
+        -- Porcentaje de atribución coherente con personal_amount
         CASE
             WHEN adjustment_type = 'PARTNER_EXPENSE' THEN 0.00
             WHEN adjustment_type = 'MY_EXPENSE'      THEN 1.00
-            WHEN account_ownership = 'common'        THEN 0.50
-            ELSE 1.00
+            WHEN final_category_id = 'MOV_FONDEO_COMUN' AND final_participant_name = 'Pablo Rodríguez' THEN 1.00
+            WHEN final_category_id = 'MOV_FONDEO_COMUN' THEN 0.00
+            WHEN account_ownership = 'personal' THEN 1.00
+            WHEN account_ownership = 'common' 
+                 AND (resolved_movement_type IN ('EXPENSE', 'INCOME', 'EXPENSE_REFUND') 
+                      OR final_category_id LIKE 'CPX_%')
+                THEN 0.50
+            ELSE 0.00
         END AS personal_share_pct,
 
         -- P&L RIGUROSO (Excluye transferencias, CAPEX y gastos ajenos)
