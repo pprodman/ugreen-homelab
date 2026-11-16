@@ -292,6 +292,7 @@ final AS (
             WHEN account_ownership = 'common' 
                  AND (resolved_movement_type IN ('EXPENSE', 'INCOME', 'EXPENSE_REFUND') 
                       OR final_category_id LIKE 'CPX_%')
+                      OR transaction_nature = 'CARD_SETTLEMENT'
                 THEN ROUND(amount * 0.50, 2)
 
             ELSE 0.00
