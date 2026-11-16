@@ -278,15 +278,15 @@ final AS (
             WHEN adjustment_type = 'PARTIAL_EXPENSE' 
                 THEN -ROUND((ABS(amount) - ABS(COALESCE(adjustment_amount, 0))) * 0.50, 2)
 
-            -- 2. Fondeos a cuenta común: el tuyo entra al 100% en tu patrimonio, el de Lledó al 0%
+             -- 2. Cuentas individuales: 100% tuyo (incluye ingresos, gastos y traspasos internos)
+            WHEN account_ownership = 'personal' 
+                THEN ROUND(amount, 2)
+
+            -- 3. Fondeos a cuenta común: el tuyo entra al 100% en tu patrimonio, el de Lledó al 0%
             WHEN final_category_id = 'MOV_FONDEO_COMUN' AND final_participant_name = 'Pablo Rodríguez'
                 THEN ROUND(amount, 2)
             WHEN final_category_id = 'MOV_FONDEO_COMUN'
                 THEN 0.00
-
-            -- 3. Cuentas individuales: 100% tuyo (incluye ingresos, gastos y traspasos internos)
-            WHEN account_ownership = 'personal' 
-                THEN ROUND(amount, 2)
 
             -- 4. Cuenta/tarjeta común: 50% en ingresos, gastos, devoluciones y CAPEX
             WHEN account_ownership = 'common' 
