@@ -1,18 +1,25 @@
 services:
-
-  tunnel-tigres:
-    image: ginuerzh/gost:latest
-    container_name: tunnel-tigres
+  # ==========================================
+  # TÚNEL VPN: GLUETUN (SURFSHARK WIREGUARD)
+  # ==========================================
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
     restart: unless-stopped
-    command: >-
-      -L="tcp://:8088/mainhost.123tigres.org:2087?tls=true&sni=mainhost.123tigres.org"
-      -F="http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}"
-    extra_hosts:
-      - "mainhost.123tigres.org:127.0.0.1"
-    networks:
-      default:
-        aliases:
-          - mainhost.123tigres.org
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=surfshark
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=10.14.0.2/16
+      - SERVER_COUNTRIES=${VPN_COUNTRIES}
+      - FIREWALL_OUTBOUND_SUBNETS=192.168.1.0/24
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/jellyfin-iptv/gluetun:/gluetun
 
   # ==========================================
   # GENERADOR: XTREAM 2 JELLYFIN (.strm & .nfo)
@@ -22,8 +29,9 @@ services:
     container_name: xtream2jellyfin
     restart: unless-stopped
     depends_on:
-      - tunnel-tigres
-    network_mode: "service:tunnel-tigres"
+      gluetun:
+        condition: service_healthy
+    network_mode: "service:gluetun"
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -32,7 +40,6 @@ services:
       - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/config:/app/config
       - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/cache:/app/cache
       - ${APPDATA_PATH}/jellyfin-iptv/xtream2jellyfin/media:/app/media
-
 
   # ==========================================
   # SERVIDOR: JELLYFIN
@@ -43,7 +50,6 @@ services:
     restart: unless-stopped
     depends_on:
       - xtream2jellyfin
-      - tunnel-tigres
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
