@@ -5,17 +5,14 @@ services:
     container_name: tunnel-tigres
     restart: unless-stopped
     command: >-
-      -L=tcp://:8088
-      -F=http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}
-      -F=tls://mainhost.123tigres.org:2087?secure=false
+      -L="tcp://:8088/mainhost.123tigres.org:2087?tls=true&sni=mainhost.123tigres.org"
+      -F="http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}"
     extra_hosts:
       - "mainhost.123tigres.org:127.0.0.1"
     networks:
       default:
-        # Para Jellyfin (que está en la red bridge y resolverá este dominio hacia este contenedor)
         aliases:
           - mainhost.123tigres.org
-
 
   # ==========================================
   # GENERADOR: XTREAM 2 JELLYFIN (.strm & .nfo)
